@@ -1,115 +1,71 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 function trackEvent(action: string, params?: Record<string, unknown>) {
   (window as any).gtag?.('event', action, params);
 }
 
-// --- Single-file React gallery for Pokémon cards (Mew-focused) ---
-// Theme: Dark gray (#101010) with pink accents (#cb97a5)
-// - Flags inferred by tab name ("Japanese" -> isMew, "Cameo" -> isCameo, "Unique" -> isIntl)
-// - **No de-duplication** across tabs
-// - CSP-safe fetching (docs.google.com only)
-// - Robust CSV parser + test harness
-//
-// --- Improvements from User ---
-// - Refactored data fetching to use Promise.allSettled for parallel requests.
-// - Added error logging for failed sheet fetches for easier debugging.
-// - Added keyboard accessibility to the detail modal (closes on 'Escape').
-// - Replaced the text '✕' close button with a scalable SVG icon.
-// - Added a 'clear' button to the search input.
-// - Simplified the `applyFilters` logic for better readability.
-// - Completed and enhanced the development test suite.
-// - Fixed "duplicate key" error by generating guaranteed-unique IDs for cards.
-// - Added language toggle for Japanese/English card names, notes, and origins.
-// - Added card flip animation in detail modal for cards with a back image.
-// - Added image preloader with a loading bar for a smoother initial experience.
-// - Switched to Google Apps Script for secure data fetching from a private sheet.
-//
-// --- Gemini's Enhancements ---
-// - Changed card flip trigger in detail modal from hover to click for touch-device compatibility.
-// - Added a visual icon to indicate when a card is flippable.
-// - Updated hardcoded `http://` image URLs to `https://` to prevent mixed-content warnings.
-// - Simplified modal flip state management.
-// - Added optional password protection via Google Apps Script and a new 'Config' sheet.
-// - Redesigned password screen to be more minimal.
-// - Unified loading/password screens to prevent logo movement and remove the unlock button.
-// - Added logo pulse animation during password check and removed error text/placeholder.
-// - Refactored authentication logic to ensure password check pulse animation works correctly.
-// - Made the logo fade consistent across all loading phases.
-// - Changed password field background to match page, and change on focus.
-// - Made the password field non-focused on load by removing autoFocus.
+// ------------------------------
+// Supabase client
+// ------------------------------
+const SUPABASE_URL = "https://aziykyepzmgdstjzrdvc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_jyAF9Z24hYKGYY7ByY4SCg_67GuunlZ";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const APP_VERSION = "22.0";
 
 // ------------------------------
-// 1) Types & sample data
+// Types
 // ------------------------------
 export type Edition = '1st' | 'Unlim' | 'Error';
 
-export type PokeCard = {
+export type Card = {
   id: string;
-  nameEN: string;
-  nameJP?: string;
-  number: string;
-  set: string;
-  year: number;
-  rarity?: string;
-  types: string[];
-  language?: string;
-  graded?: boolean;
-  grade?: string;
-  priceUSD?: number;
-  image: string;
-  imageBack?: string;
-  notesEN?: string;
-  notesJP?: string;
-  illustrator?: string;
-  era?: string;
-  originEN?: string;
-  originJP?: string;
-  release?: string;
-  population?: { psa8: number; psa9: number; psa10: number; bgsBL: number | null };
-  isMew?: boolean;
-  isCameo?: boolean;
-  isIntl?: boolean;
-  edition?: Edition;
-  pc?: string;
+  name: string;
+  number?: string | null;
+  set?: string | null;
+  year?: number | null;
+  release?: string | null;
+  rarity?: string | null;
+  era?: string | null;
+  language?: string | null;
+  image?: string | null;
+  image_back?: string | null;
+  illustrator?: string | null;
+  notes?: string | null;
+  origin?: string | null;
+  edition?: Edition | null;
+  is_mew?: boolean;
+  is_cameo?: boolean;
+  is_intl?: boolean;
+  pc?: string | null;
 };
 
 // ------------------------------
-// 2) Pure helpers
+// Helpers
 // ------------------------------
-export type SortKey = "releaseAsc" | "releaseDesc" | "yearDesc" | "yearAsc" | "name" | "rarity";
-export type FilterState = { q: string; mew: boolean; cameo: boolean; intl: boolean; sortBy: SortKey };
+type FilterState = { q: string; mew: boolean; cameo: boolean; intl: boolean; sortDesc: boolean };
 
-function applyFilters(cards: PokeCard[], f: FilterState): PokeCard[] {
+function applyFilters(cards: Card[], f: FilterState): Card[] {
   let items = [...cards];
 
-  // 1. Filter by search query
   if (f.q.trim()) {
     const term = f.q.trim().toLowerCase();
     items = items.filter((c) =>
-      [c.nameEN, c.nameJP, c.number, c.set, c.rarity, c.notesEN, c.notesJP, c.originEN, c.originJP]
+      [c.name, c.number, c.set, c.rarity, c.notes, c.origin]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(term))
     );
   }
 
-  // 2. Filter by category toggles (Mew, Cameo, Intl)
   const anyTag = f.mew || f.cameo || f.intl;
   if (!anyTag) return [];
 
   items = items.filter(
-    (c) => (f.mew && c.isMew) || (f.cameo && c.isCameo) || (f.intl && c.isIntl)
+    (c) => (f.mew && c.is_mew) || (f.cameo && c.is_cameo) || (f.intl && c.is_intl)
   );
-  
-  // 3. Apply sorting
-  switch (f.sortBy) {
-    case "releaseAsc": items.sort((a, b) => releaseTs(a) - releaseTs(b)); break;
-    case "releaseDesc": items.sort((a, b) => releaseTs(b) - releaseTs(a)); break;
-    case "yearAsc": items.sort((a, b) => a.year - b.year); break;
-    case "name": items.sort((a, b) => a.nameEN.localeCompare(b.nameEN)); break;
-    case "rarity": items.sort((a, b) => (a.rarity || "").localeCompare(b.rarity || "")); break;
-    default: items.sort((a, b) => b.year - a.year);
-  }
+
+  items.sort((a, b) => f.sortDesc ? releaseTs(b) - releaseTs(a) : releaseTs(a) - releaseTs(b));
   return items;
 }
 
@@ -117,22 +73,14 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
 
-function formatDate(dateString: string | undefined): string | undefined {
-  if (!dateString) {
-    return undefined;
-  }
+function formatDate(dateString: string | null | undefined): string | undefined {
+  if (!dateString) return undefined;
   const date = new Date(dateString);
-  if (isNaN(date.getTime())) {
-    return dateString;
-  }
+  if (isNaN(date.getTime())) return dateString;
   const year = date.getUTCFullYear();
   const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
   const day = date.getUTCDate().toString().padStart(2, '0');
-
-  if (year < 1990 || year > 2050) {
-      return dateString;
-  }
-
+  if (year < 1990 || year > 2050) return dateString;
   return `${year}-${month}-${day}`;
 }
 
@@ -141,184 +89,19 @@ function handleImgError(e: React.SyntheticEvent<HTMLImageElement>) {
   const img = e.currentTarget; if (img.src !== IMG_FALLBACK) img.src = IMG_FALLBACK;
 }
 
-// ------------------------------
-// 3) Google Sheets loader (via Apps Script)
-// ------------------------------
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeuOPhbDRtfzwDes3xku0AQi4me0o2zgsSdEBMOKWArzai28lS-wHeOWuui8FI8pf81Q/exec";
-const TAB_MAPPINGS = { mew: "Japanese", cameo: "Cameo", intl: "Unique" } as const;
-const APP_VERSION = "21.5";
-
-function parseBool(x: string | undefined): boolean | undefined {
-  if (!x) return undefined;
-  const s = x.trim().toLowerCase();
-  return s === "true" || s === "1" ? true : s === "false" || s === "0" ? false : undefined;
-}
-
-function normalizePC(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim().toUpperCase();
-  if (!trimmed) return undefined;
-  if (trimmed === "RAW") return "RAW";
-  if (trimmed === "N/A" || trimmed === "NA") return "N/A";
-  const match = trimmed.match(/^PSA\s?(\d{1,2})$/);
-  if (!match) return undefined;
-  const grade = Number.parseInt(match[1], 10);
-  if (!Number.isFinite(grade) || grade < 1 || grade > 10) return undefined;
-  return `PSA${grade}`;
-}
-
-function stripBOM(s: string): string { return s && s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s; }
-
-function slugify(...parts: Array<string | undefined>): string {
-  const s = parts.filter(Boolean).join(" ").trim().toLowerCase();
-  return s.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "row";
-}
-
-function releaseTs(card: PokeCard): number {
+function releaseTs(card: Card): number {
   if (card.release) {
     const t = Date.parse(card.release);
     if (!Number.isNaN(t)) return t;
   }
-  if (Number.isFinite(card.year) && card.year > 0) {
+  if (card.year && Number.isFinite(card.year) && card.year > 0) {
     return new Date(card.year, 0, 1).getTime();
   }
   return Number.POSITIVE_INFINITY;
 }
 
 // ------------------------------
-// 3.1) CSV parser (handles quotes, commas, CRLF)
-// ------------------------------
-function parseCSV(csv: string): PokeCard[] {
-  csv = stripBOM(csv);
-  const rows: string[][] = [];
-  let i = 0, field = '', row: string[] = [], inQuotes = false;
-  while (i < csv.length) {
-    const ch = csv[i];
-    if (inQuotes) {
-      if (ch === '"') { if (csv[i + 1] === '"') { field += '"'; i += 2; continue; } inQuotes = false; i++; continue; }
-      field += ch; i++; continue;
-    } else {
-      if (ch === '"') { inQuotes = true; i++; continue; }
-      if (ch === ',') { row.push(field.trim()); field = ''; i++; continue; }
-      if (ch === '\n' || ch === '\r') { if (ch === '\r' && csv[i + 1] === '\n') i++; row.push(field.trim()); field = ''; if (row.some(c => c.length > 0)) rows.push(row); row = []; i++; continue; }
-      field += ch; i++; continue;
-    }
-  }
-  row.push(field.trim());
-  if (row.length > 1 || (row.length === 1 && row[0] !== '')) rows.push(row);
-
-  if (rows.length < 2) return [];
-  const headers = rows[0].map(h => stripBOM(h).trim());
-  const lc = headers.map(h => h.toLowerCase());
-  const findIdx = (name: string, aliases: string[] = []) => {
-    const target = name.toLowerCase();
-    let j = lc.indexOf(target); if (j >= 0) return j;
-    for (const a of aliases) { const k = lc.indexOf(a.toLowerCase()); if (k >= 0) return k; }
-    return -1;
-  };
-
-  const idxId = findIdx('id', ['card_id']);
-  const idxNameEN = findIdx('name en', ['name']);
-  const idxNameJP = findIdx('name jp', ['name_jp']);
-  const idxNotesEN = findIdx('notes en', ['notes']);
-  const idxNotesJP = findIdx('notes jp', ['notes_jp']);
-  const idxOriginEN = findIdx('origin en', ['origin']);
-  const idxOriginJP = findIdx('origin jp', ['origin_jp']);
-  const idxNumber = findIdx('number', ['no', 'card no', 'card #']);
-  const idxSet = findIdx('set', ['set name', 'series']);
-  const idxYear = findIdx('year');
-  const idxRelease = findIdx('release', ['release date', 'released']);
-  const idxRarity = findIdx('rarity');
-  const idxTypes = findIdx('types');
-  const idxLang = findIdx('language', ['lang']);
-  const idxImage = findIdx('image front', ['image', 'image_front', 'image url', 'image_url', 'img', 'image link']);
-  const idxImageBack = findIdx('image back', ['image_back']);
-  const idxIllus = findIdx('illustrator', ['artist']);
-  const idxEra = findIdx('era');
-  const idxIsMew = findIdx('isMew', ['ismew']);
-  const idxIsCameo = findIdx('isCameo', ['iscameo']);
-  const idxIsIntl = findIdx('isIntl', ['isintrl', 'international']);
-  const idxEdition = findIdx('edition');
-  const idxPSA8 = findIdx('psa8');
-  const idxPSA9 = findIdx('psa9');
-  const idxPSA10 = findIdx('psa10');
-  const idxBGSBL = findIdx('bgsBL', ['bgs bl', 'bgs_black_label']);
-  const idxPC = findIdx('pc');
-
-  const out: PokeCard[] = [];
-  for (let r = 1; r < rows.length; r++) {
-    const cols = rows[r];
-    const get = (j: number) => (j >= 0 && j < cols.length ? cols[j] : '');
-    const nameENRaw = get(idxNameEN);
-    const nameJPRaw = get(idxNameJP);
-    const nameEN = nameENRaw || nameJPRaw;
-    const image = get(idxImage) || IMG_FALLBACK;
-    if (!nameEN) continue;
-
-    const typesField = get(idxTypes);
-    const types = typesField ? typesField.split('|').map(t => t.trim()).filter(Boolean) : [];
-    const bgsBLRaw = get(idxBGSBL);
-    const pop = { 
-        psa8: Number(get(idxPSA8) || 0), 
-        psa9: Number(get(idxPSA9) || 0), 
-        psa10: Number(get(idxPSA10) || 0), 
-        bgsBL: bgsBLRaw === '' ? null : Number(bgsBLRaw)
-    };
-    const hasPsaData = pop.psa8 > 0 || pop.psa9 > 0 || pop.psa10 > 0;
-    const hasBgsData = pop.bgsBL !== null;
-    const maybePop = (hasPsaData || hasBgsData) ? pop : undefined;
-    
-    const edition = (get(idxEdition) as Edition) || undefined;
-    const yearRaw = get(idxYear);
-    const yearNum = Number.parseInt(yearRaw, 10);
-    const id = get(idxId) || slugify(nameEN, get(idxSet), get(idxNumber), String(r));
-
-    const card: PokeCard = {
-      id,
-      nameEN,
-      nameJP: nameJPRaw || undefined,
-      notesEN: get(idxNotesEN) || undefined,
-      notesJP: get(idxNotesJP) || undefined,
-      originEN: get(idxOriginEN) || undefined,
-      originJP: get(idxOriginJP) || undefined,
-      number: get(idxNumber),
-      set: get(idxSet) || "",
-      year: Number.isFinite(yearNum) ? yearNum : 0,
-      rarity: get(idxRarity) || undefined,
-      types,
-      language: get(idxLang) || undefined,
-      image,
-      imageBack: get(idxImageBack) || undefined,
-      illustrator: get(idxIllus) || undefined,
-      era: get(idxEra) || undefined,
-      release: get(idxRelease) || undefined,
-      isMew: parseBool(get(idxIsMew)),
-      isCameo: parseBool(get(idxIsCameo)),
-      isIntl: parseBool(get(idxIsIntl)),
-      edition,
-      population: maybePop,
-      pc: normalizePC(get(idxPC)),
-    };
-    out.push(card);
-  }
-  return out;
-}
-
-function mergeCardsNoDedupe(groups: Array<{ cards: PokeCard[]; flag: 'isMew' | 'isCameo' | 'isIntl' }>): PokeCard[] {
-  const prefix = (flag: 'isMew' | 'isCameo' | 'isIntl') => flag === 'isMew' ? 'mew' : flag === 'isCameo' ? 'cameo' : 'intl';
-  const out: PokeCard[] = [];
-  for (const g of groups) {
-    const p = prefix(g.flag);
-    g.cards.forEach((c, index) => {
-      const uniqueId = slugify(p, c.nameEN, c.set, c.number, String(c.year), String(index));
-      out.push({ ...c, id: uniqueId, [g.flag]: true });
-    });
-  }
-  return out;
-}
-
-// ------------------------------
-// 3.2) 3D tilt + glare (hover)
+// 3D tilt + glare
 // ------------------------------
 const TiltCardButton: React.FC<{ ariaLabel: string; onClick: () => void; children: React.ReactNode }> = ({ ariaLabel, onClick, children }) => {
   const ref = React.useRef<HTMLButtonElement>(null);
@@ -339,17 +122,15 @@ const TiltCardButton: React.FC<{ ariaLabel: string; onClick: () => void; childre
     const rect = el.getBoundingClientRect();
     const px = (e.clientX - rect.left) / rect.width;
     const py = (e.clientY - rect.top) / rect.height;
-
-    const max = 24; // degrees of tilt
-    const rx = (py - 0.5) * -max; // rotateX
-    const ry = (px - 0.5) * max; // rotateY
-
+    const max = 24;
+    const rx = (py - 0.5) * -max;
+    const ry = (px - 0.5) * max;
     el.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg)`;
 
     if (glareRef.current) {
       const tiltMag = Math.min(1, Math.hypot(rx, ry) / max);
-      const gx = 50 + (-ry / max) * 35; // percent across X based on rotateY
-      const gy = 50 + (rx / max) * 35; // percent down Y based on rotateX
+      const gx = 50 + (-ry / max) * 35;
+      const gy = 50 + (rx / max) * 35;
       const baseAlpha = 0.45 + 0.25 * tiltMag;
       const alpha = (baseAlpha * 0.70).toFixed(2);
       glareRef.current.style.opacity = `${alpha}`;
@@ -374,52 +155,40 @@ const TiltCardButton: React.FC<{ ariaLabel: string; onClick: () => void; childre
   );
 };
 
-
-// ------------------------------
-// Background radial gradient (fixed)
-// ------------------------------
 const BackgroundGradient: React.FC = () => (
   <div
     aria-hidden="true"
     className="pointer-events-none fixed inset-0 z-0"
-    style={{
-      background: `linear-gradient(to top left, rgba(203, 151, 165, 0.15), transparent 40%)`,
-    }}
+    style={{ background: `linear-gradient(to top left, rgba(203, 151, 165, 0.15), transparent 40%)` }}
   />
 );
 
 // ------------------------------
-// 4) Main component
+// Main component
 // ------------------------------
 export default function PokeCardGallery() {
-  const [q, setQ] = useState("");
-  const [selected, setSelected] = useState<PokeCard | null>(null);
-  const [showStats, setShowStats] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<"psa10" | "psa19" | "need" | "all">("all");
-  const [isMobile, setIsMobile] = useState(false);
-  const [statsSelected, setStatsSelected] = useState<PokeCard | null>(null);
-  const [mew, setMew] = useState(true);
-  const [cameo, setCameo] = useState(false);
-  const [intl, setIntl] = useState(false);
-  const [remoteCards, setRemoteCards] = useState<PokeCard[] | null>(null);
-  const [releaseSortDesc, setReleaseSortDesc] = useState(false);
-  const [language, setLanguage] = useState<'EN' | 'JP'>('JP');
-  const [desaturateNeed, setDesaturateNeed] = useState(false);
-  
-  const [dataStatus, setDataStatus] = useState<'loading' | 'loaded' | 'fallback'>('loading');
+  const [cards, setCards] = useState<Card[]>([]);
+  const [dataStatus, setDataStatus] = useState<'loading' | 'loaded'>('loading');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [imagesLoaded, setImagesLoaded] = useState(false);
 
-  // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [passwordRequired, setPasswordRequired] = useState(false);
-  const [password, setPassword] = useState("");
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<Card | null>(null);
+  const [showStats, setShowStats] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<"psa10" | "psa19" | "need" | "all">("all");
+  const [isMobile, setIsMobile] = useState(false);
+  const [statsSelected, setStatsSelected] = useState<Card | null>(null);
+  const [mew, setMew] = useState(true);
+  const [cameo, setCameo] = useState(false);
+  const [intl, setIntl] = useState(false);
+  const [releaseSortDesc, setReleaseSortDesc] = useState(false);
+  const [desaturateNeed, setDesaturateNeed] = useState(false);
+
   const [swirlEpoch] = useState(() => Date.now());
   const swirlDelay = useMemo(() => -((Date.now() - swirlEpoch) % 5000) / 1000, [swirlEpoch]);
 
-  useEffect(() => { document.title = "Mew"; }, []);
+  useEffect(() => { document.title = "Collect"; }, []);
 
   useEffect(() => {
     if (!q.trim()) return;
@@ -429,9 +198,7 @@ export default function PokeCardGallery() {
 
   useEffect(() => {
     if (!showStats) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowStats(false);
-    };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") setShowStats(false); };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [showStats]);
@@ -443,109 +210,24 @@ export default function PokeCardGallery() {
     return () => window.removeEventListener("resize", updateIsMobile);
   }, []);
 
-
-  // Check if password is required on initial load
-  useEffect(() => {
-    const checkAuth = async () => {
-        try {
-            const res = await fetch(`${APPS_SCRIPT_URL}?action=getConfig`);
-            const config = await res.json();
-            if (config.passwordEnabled) {
-                setPasswordRequired(true);
-            } else {
-                setIsAuthenticated(true);
-            }
-        } catch (error) {
-            console.error("Failed to fetch config:", error);
-            // Fallback to public if config fails to load
-            setIsAuthenticated(true); 
-        } finally {
-            setAuthChecked(true);
-        }
-    };
-    checkAuth();
-  }, []);
-
-  // This effect handles all data fetching, for both public and private galleries.
-  useEffect(() => {
-    // Don't run until we know if the gallery is public or private.
-    if (!authChecked) return;
-    
-    const fetchAllSheets = async () => {
-      const sources: { name: string, flag: 'isMew' | 'isCameo' | 'isIntl' }[] = [
-        { name: TAB_MAPPINGS.mew, flag: 'isMew' },
-        { name: TAB_MAPPINGS.cameo, flag: 'isCameo' },
-        { name: TAB_MAPPINGS.intl, flag: 'isIntl' },
-      ];
-
-      const results = await Promise.allSettled(
-        sources.map(s => {
-          let url = `${APPS_SCRIPT_URL}?sheet=${encodeURIComponent(s.name)}`;
-          if (passwordRequired) {
-              url += `&password=${encodeURIComponent(password)}`;
-          }
-          return fetch(url).then(async res => {
-              const text = await res.text();
-              if (text.startsWith("Error: Authentication Failed")) {
-                  throw new Error("Authentication Failed");
-              }
-              if (!res.ok && !text.startsWith("Error:")) {
-                  throw new Error(`Failed to fetch sheet "${s.name}": ${res.statusText}`);
-              }
-              return text;
-          });
-        })
-      );
-      
-      const authFailed = results.some(r => r.status === 'rejected' && r.reason.message === "Authentication Failed");
-
-      if (authFailed) {
-          setPassword(""); // Clear incorrect password
-          setRemoteCards(null);
-          setIsAuthenticating(false); // Stop pulse on failure
-          return;
-      }
-
-      // --- AUTHENTICATION SUCCESS ---
-      const successfulGroups = results.reduce<Array<{ cards: PokeCard[]; flag: 'isMew' | 'isCameo' | 'isIntl' }>>((acc, result, i) => {
-        if (result.status === 'fulfilled' && result.value) {
-          const cards = parseCSV(result.value);
-          if (cards.length > 0) {
-            acc.push({ cards, flag: sources[i].flag });
-          }
-        } else if (result.status === 'rejected') {
-          console.error(`Error fetching sheet "${sources[i].name}":`, result.reason);
-        }
-        return acc;
-      }, []);
-
-      if (successfulGroups.length > 0) {
-        setRemoteCards(mergeCardsNoDedupe(successfulGroups));
-        setDataStatus('loaded');
-      } else {
-        setRemoteCards(null);
-        setDataStatus('fallback');
-      }
-      setIsAuthenticated(true); // Grant access
-    };
-    
-    // Run if it's a public gallery, or if a password has been submitted.
-    if ((!passwordRequired && authChecked) || password) {
-        fetchAllSheets();
+  const fetchCards = async () => {
+    const { data, error } = await supabase.from('cards').select('*');
+    if (error) {
+      console.error("Failed to fetch cards:", error);
+      setCards([]);
+    } else {
+      setCards(data || []);
     }
-  }, [password, passwordRequired, authChecked]);
+    setDataStatus('loaded');
+  };
 
-
-  const sourceCards = useMemo(() => remoteCards ?? [], [remoteCards]);
+  useEffect(() => { fetchCards(); }, []);
 
   useEffect(() => {
-    if (dataStatus !== 'loaded' || !isAuthenticated) return;
+    if (dataStatus !== 'loaded') return;
 
-    const imageUrls = sourceCards.flatMap(card => [card.image, card.imageBack]).filter(Boolean) as string[];
-    if (imageUrls.length === 0) {
-      setImagesLoaded(true);
-      return;
-    }
+    const imageUrls = cards.flatMap(c => [c.image, c.image_back]).filter(Boolean) as string[];
+    if (imageUrls.length === 0) { setImagesLoaded(true); return; }
 
     let loadedCount = 0;
     const totalCount = imageUrls.length;
@@ -559,66 +241,46 @@ export default function PokeCardGallery() {
         loadedCount++;
         const progress = Math.round((loadedCount / totalCount) * 100);
         setLoadingProgress(progress);
-        if (loadedCount === totalCount) {
-          setTimeout(() => setImagesLoaded(true), 400);
-        }
+        if (loadedCount === totalCount) setTimeout(() => setImagesLoaded(true), 400);
       };
       img.onload = onFinish;
       img.onerror = onFinish;
     });
-  }, [sourceCards, dataStatus, isAuthenticated]);
+  }, [cards, dataStatus]);
 
-
-  const filtered = useMemo(() => applyFilters(sourceCards, { q, mew, cameo, intl, sortBy: releaseSortDesc ? "releaseDesc" : "releaseAsc" }), [q, mew, cameo, intl, sourceCards, releaseSortDesc]);
+  const filtered = useMemo(
+    () => applyFilters(cards, { q, mew, cameo, intl, sortDesc: releaseSortDesc }),
+    [q, mew, cameo, intl, cards, releaseSortDesc]
+  );
 
   const ownedStats = useMemo(() => {
-    const total = sourceCards.filter((card) => card.pc !== "N/A").length;
-    const psa10Cards = sourceCards.filter((card) => card.pc === "PSA10");
+    const total = cards.filter((c) => c.pc !== "N/A").length;
+    const psa10Cards = cards.filter((c) => c.pc === "PSA10");
     const psa10 = psa10Cards.length;
     const lowerGrades = Array.from({ length: 9 }, (_, i) => `PSA${i + 1}`);
-    const psa19Cards = sourceCards.filter((card) => lowerGrades.includes(card.pc || ""));
-    const needCards = sourceCards.filter((card) => card.pc !== "PSA10" && card.pc !== "N/A");
-    return { total, psa10, psa10Cards, psa19Cards, needCards, allCards: sourceCards };
-  }, [sourceCards]);
+    const psa19Cards = cards.filter((c) => lowerGrades.includes(c.pc || ""));
+    const needCards = cards.filter((c) => c.pc !== "PSA10" && c.pc !== "N/A");
+    return { total, psa10, psa10Cards, psa19Cards, needCards, allCards: cards };
+  }, [cards]);
 
   const activeStatsCards = useMemo(() => {
     switch (detailsTab) {
-      case "psa10":
-        return ownedStats.psa10Cards;
-      case "psa19":
-        return ownedStats.psa19Cards;
-      case "need":
-        return ownedStats.needCards;
-      default:
-        return ownedStats.allCards;
+      case "psa10": return ownedStats.psa10Cards;
+      case "psa19": return ownedStats.psa19Cards;
+      case "need": return ownedStats.needCards;
+      default: return ownedStats.allCards;
     }
   }, [detailsTab, ownedStats]);
 
   useEffect(() => {
-    if (activeStatsCards.length === 0) {
-      setStatsSelected(null);
-      return;
-    }
-    if (!statsSelected || !activeStatsCards.some((card) => card.id === statsSelected.id)) {
+    if (activeStatsCards.length === 0) { setStatsSelected(null); return; }
+    if (!statsSelected || !activeStatsCards.some((c) => c.id === statsSelected.id)) {
       setStatsSelected(activeStatsCards[0]);
     }
   }, [activeStatsCards, statsSelected]);
 
-  const handlePasswordSubmit = (submittedPassword: string) => {
-    setIsAuthenticating(true); // Start pulse
-    setPassword(submittedPassword); // Set password to trigger data fetch effect
-  };
-
-  if (!authChecked || !imagesLoaded || (passwordRequired && !isAuthenticated)) {
-    return (
-      <LoadingScreen
-        progress={loadingProgress}
-        swirlDelay={swirlDelay}
-        showPassword={passwordRequired && !isAuthenticated}
-        onPasswordSubmit={handlePasswordSubmit}
-        isAuthenticating={isAuthenticating}
-      />
-    );
+  if (dataStatus === 'loading' || !imagesLoaded) {
+    return <LoadingScreen progress={loadingProgress} swirlDelay={swirlDelay} />;
   }
 
   return (
@@ -628,10 +290,10 @@ export default function PokeCardGallery() {
         <div className="mx-auto max-w-7xl px-3 py-2">
           <div className="flex w-full flex-row flex-wrap items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <img src="https://mew.cards/img/logo.png" alt="Mew Cards Logo" className="h-8 w-8" />
+              <img src="https://mew.cards/img/logo.png" alt="Collect Logo" className="h-8 w-8" />
               <div>
-                <h1 className="text-base sm:text-lg font-semibold tracking-tight">Mew</h1>
-                <div className="-mt-0.5 text-[11px] text-gray-400">Complete Japanese List</div>
+                <h1 className="text-base sm:text-lg font-semibold tracking-tight">Collect</h1>
+                <div className="-mt-0.5 text-[11px] text-gray-400">Card Gallery</div>
               </div>
             </div>
             <div className="flex w-full flex-row flex-wrap items-center gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
@@ -650,72 +312,81 @@ export default function PokeCardGallery() {
                   {releaseSortDesc ? "Date ▼" : "Date ▲"}
                 </button>
                 <div className="relative w-36 sm:w-60">
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 pr-8 text-[13px] text-gray-200 placeholder:text-gray-400 shadow-sm outline-none focus:ring-2 focus:ring-[#cb97a5]" />
-                {q && (
-                  <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-500 hover:text-gray-200 hover:bg-[#2f2f2f]" aria-label="Clear search">
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 pr-8 text-[13px] text-gray-200 placeholder:text-gray-400 shadow-sm outline-none focus:ring-2 focus:ring-[#cb97a5]" />
+                  {q && (
+                    <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-500 hover:text-gray-200 hover:bg-[#2f2f2f]" aria-label="Clear search">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                  </button>
-                )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
       </header>
 
       <main className="relative z-10 mx-auto max-w-7xl px-4 pt-8 pb-16">
-        {filtered.length === 0 ? (
-          <EmptyState />)
-        : (
-          <ul key={`sort:${releaseSortDesc ? "releaseDesc" : "releaseAsc"}`} className="grid grid-cols-2 gap-6 sm:gap-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {filtered.map((card) => {
-              const displayName = (language === 'JP' && card.nameJP) ? card.nameJP : card.nameEN;
-              return (
-                <li key={card.id}>
-                  <TiltCardButton onClick={() => { setSelected(card); trackEvent('card_click', { card_name: card.nameEN, card_set: card.set, card_number: card.number }); }} ariaLabel={`Open details for ${displayName} ${card.set} ${card.number}`}>
-                    <div className="relative aspect-[63/88] w-full overflow-hidden bg-[#0f0f0f]" style={{ borderRadius: "5.2% / 3.9%" }}>
-                      <img
-                        src={card.image}
-                        alt={displayName}
-                        className={classNames(
-                          "h-full w-full object-fill transition-[filter] duration-200",
-                          desaturateNeed && card.pc !== "PSA10" && (card.pc === "N/A" ? "grayscale opacity-25" : "grayscale")
-                        )}
-                        style={{ aspectRatio: "63/88" }}
-                        onError={handleImgError}
-                        referrerPolicy="strict-origin-when-cross-origin"
-                      />
-                      {card.edition?.toLowerCase() === 'error' && (
-                        <div className="absolute bottom-[10%] left-0 right-0 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-white" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, rgba(220,38,38,0.8) 0, rgba(220,38,38,0.8) 1.5px, transparent 1.5px, transparent 4.5px)', textShadow: '0 0 4px rgba(220,38,38,1), 0 0 8px rgba(220,38,38,0.9), 1px 1px 0 rgba(180,0,0,0.8), -1px -1px 0 rgba(180,0,0,0.8)' }}>
-                          Error
-                        </div>
+        {cards.length === 0 ? (
+          <EmptyDatabase onSeeded={fetchCards} />
+        ) : filtered.length === 0 ? (
+          <EmptyFiltered />
+        ) : (
+          <ul key={`sort:${releaseSortDesc ? "desc" : "asc"}`} className="grid grid-cols-2 gap-6 sm:gap-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {filtered.map((card) => (
+              <li key={card.id}>
+                <TiltCardButton onClick={() => { setSelected(card); trackEvent('card_click', { card_name: card.name, card_set: card.set, card_number: card.number }); }} ariaLabel={`Open details for ${card.name} ${card.set || ''} ${card.number || ''}`}>
+                  <div className="relative aspect-[63/88] w-full overflow-hidden bg-[#0f0f0f]" style={{ borderRadius: "5.2% / 3.9%" }}>
+                    <img
+                      src={card.image || IMG_FALLBACK}
+                      alt={card.name}
+                      className={classNames(
+                        "h-full w-full object-fill transition-[filter] duration-200",
+                        desaturateNeed && card.pc !== "PSA10" && (card.pc === "N/A" ? "grayscale opacity-25" : "grayscale")
                       )}
-                    </div>
-                  </TiltCardButton>
-                  <div className="mt-1.5 flex h-5 items-center justify-between gap-1.5 px-1">
-                    <span className="text-[10px] font-semibold text-[#cb97a5] truncate">
-                      {card.number && card.number !== "N/A" ? card.number : ''}
-                    </span>
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      {card.year ? <InfoPill label={String(card.year)} /> : null}
-                      {card.rarity ? <InfoPill label={card.rarity} /> : null}
-                      {card.edition ? <InfoPill label={card.edition} /> : null}
-                    </div>
+                      style={{ aspectRatio: "63/88" }}
+                      onError={handleImgError}
+                      referrerPolicy="strict-origin-when-cross-origin"
+                    />
+                    {card.edition?.toLowerCase() === 'error' && (
+                      <div className="absolute bottom-[10%] left-0 right-0 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-white" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, rgba(220,38,38,0.8) 0, rgba(220,38,38,0.8) 1.5px, transparent 1.5px, transparent 4.5px)', textShadow: '0 0 4px rgba(220,38,38,1), 0 0 8px rgba(220,38,38,0.9), 1px 1px 0 rgba(180,0,0,0.8), -1px -1px 0 rgba(180,0,0,0.8)' }}>
+                        Error
+                      </div>
+                    )}
                   </div>
-                </li>
-              );
-            })}
+                </TiltCardButton>
+                <div className="mt-1.5 flex h-5 items-center justify-between gap-1.5 px-1">
+                  <span className="text-[10px] font-semibold text-[#cb97a5] truncate">
+                    {card.number && card.number !== "N/A" ? card.number : ''}
+                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {card.year ? <InfoPill label={String(card.year)} /> : null}
+                    {card.rarity ? <InfoPill label={card.rarity} /> : null}
+                    {card.edition ? <InfoPill label={card.edition} /> : null}
+                  </div>
+                </div>
+              </li>
+            ))}
           </ul>
         )}
       </main>
+
       <div className="fixed bottom-4 left-4 z-50 flex flex-col items-center gap-1">
+        <button
+          type="button"
+          onClick={() => { setShowEdit(true); trackEvent('edit_modal_open'); }}
+          aria-label="Edit cards"
+          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 opacity-50 hover:opacity-100 transition-opacity duration-150" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+        </button>
         <button
           type="button"
           onClick={() => setDesaturateNeed((v) => !v)}
           aria-label="Toggle need list desaturation"
-          className={classNames(
-            "rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
-          )}
+          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
         >
           <svg
             aria-hidden="true"
@@ -749,22 +420,27 @@ export default function PokeCardGallery() {
           />
         </button>
       </div>
+
       {showStats && (
         <StatsModal
           onClose={() => setShowStats(false)}
           stats={ownedStats}
           onSelectCard={(card) => setStatsSelected(card)}
           selectedCard={statsSelected}
-          onOpenCard={(card) => {
-            setSelected(card);
-            setShowStats(false);
-          }}
+          onOpenCard={(card) => { setSelected(card); setShowStats(false); }}
           isMobile={isMobile}
           detailsTab={detailsTab}
           setDetailsTab={setDetailsTab}
         />
       )}
-      {selected && <DetailModal card={selected} onClose={() => setSelected(null)} language={language} setLanguage={setLanguage} />}
+      {selected && <DetailModal card={selected} onClose={() => setSelected(null)} />}
+      {showEdit && (
+        <EditSheet
+          cards={cards}
+          setCards={setCards}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
     </div>
   );
 }
@@ -800,47 +476,369 @@ const InfoBubble: React.FC<{ label: string; value?: string | number | React.Reac
   </div>
 );
 
-const PopStat: React.FC<{ value: number | string; label: string; pill?: boolean }> = ({ value, label, pill }) => (
-  <div className="text-center">
-    <div className="text-2xl font-semibold text-gray-100 leading-none">{value}</div>
-    <div className="mt-0.5 text-[11px] text-gray-400">{pill ? <span className="rounded bg-black px-2 py-0.5 font-semibold text-gray-100">{label}</span> : label}</div>
-  </div>
-);
-
-const EmptyState: React.FC = () => (
+const EmptyFiltered: React.FC = () => (
   <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[#2a2a2a] bg-[#121212] px-6 py-16 text-center text-gray-400">
     <div className="text-4xl">🔍</div>
     <div className="text-sm">No cards match your filters.</div>
   </div>
 );
 
+const EmptyDatabase: React.FC<{ onSeeded: () => void }> = ({ onSeeded }) => {
+  const [seeding, setSeeding] = useState(false);
+
+  const seed = async () => {
+    setSeeding(true);
+    const samples: Partial<Card>[] = [
+      {
+        name: "Mew",
+        number: "151",
+        set: "Wizards Black Star Promo",
+        year: 2000,
+        release: "2000-03-15",
+        rarity: "Promo",
+        era: "Base",
+        edition: "Unlim",
+        illustrator: "Ken Sugimori",
+        image: "https://images.pokemontcg.io/basep/8_hires.png",
+        is_mew: true,
+        pc: "PSA10",
+      },
+      {
+        name: "Mew ex",
+        number: "101",
+        set: "Ruby & Sapphire — Ex Dragon",
+        year: 2004,
+        release: "2004-11-08",
+        rarity: "Ultra Rare",
+        era: "EX",
+        edition: "Unlim",
+        image: "https://images.pokemontcg.io/ex5/101_hires.png",
+        is_mew: true,
+        pc: "RAW",
+      },
+      {
+        name: "Shining Mew",
+        number: "9",
+        set: "Coro Coro Promo",
+        year: 2001,
+        release: "2001-08-01",
+        rarity: "Promo",
+        era: "Neo",
+        edition: "1st",
+        image: "https://images.pokemontcg.io/neo4/9_hires.png",
+        is_mew: true,
+      },
+    ];
+    const { error } = await supabase.from('cards').insert(samples);
+    if (error) {
+      console.error("Seed failed:", error);
+      alert("Failed to seed sample data. Check console.");
+    }
+    setSeeding(false);
+    onSeeded();
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-[#2a2a2a] bg-[#121212] px-6 py-16 text-center text-gray-400">
+      <div className="text-4xl">📭</div>
+      <div className="text-sm">No cards yet. Click the pencil icon (bottom-left) to start editing, or add some samples to get going.</div>
+      <button
+        onClick={seed}
+        disabled={seeding}
+        className="rounded-lg border border-[#cb97a5]/40 bg-[#cb97a5]/20 px-4 py-2 text-xs font-semibold text-[#f6d7df] hover:bg-[#cb97a5]/30 disabled:opacity-50"
+      >
+        {seeding ? "Adding…" : "Add sample cards"}
+      </button>
+    </div>
+  );
+};
+
+// ------------------------------
+// Edit Sheet (modal grid editor)
+// ------------------------------
+const EditSheet: React.FC<{
+  cards: Card[];
+  setCards: React.Dispatch<React.SetStateAction<Card[]>>;
+  onClose: () => void;
+}> = ({ cards, setCards, onClose }) => {
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const flashSaved = () => {
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 1500);
+  };
+
+  const updateField = async (id: string, field: keyof Card, value: any) => {
+    setCards(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+    setSaveStatus('saving');
+    const { error } = await supabase.from('cards').update({ [field]: value }).eq('id', id);
+    if (error) { console.error(error); setSaveStatus('error'); }
+    else flashSaved();
+  };
+
+  const addRow = async () => {
+    setAdding(true);
+    setSaveStatus('saving');
+    const { data, error } = await supabase
+      .from('cards')
+      .insert({ name: 'New card', is_mew: true })
+      .select()
+      .single();
+    if (data && !error) {
+      setCards(prev => [...prev, data]);
+      flashSaved();
+    } else {
+      console.error(error);
+      setSaveStatus('error');
+    }
+    setAdding(false);
+  };
+
+  const deleteRow = async (id: string) => {
+    if (!confirm('Delete this card? This cannot be undone.')) return;
+    setSaveStatus('saving');
+    const { error } = await supabase.from('cards').delete().eq('id', id);
+    if (error) { console.error(error); setSaveStatus('error'); return; }
+    setCards(prev => prev.filter(c => c.id !== id));
+    flashSaved();
+  };
+
+  const sorted = useMemo(
+    () => [...cards].sort((a, b) => releaseTs(a) - releaseTs(b)),
+    [cards]
+  );
+
+  const statusText =
+    saveStatus === 'saving' ? 'Saving…' :
+    saveStatus === 'saved' ? 'Saved ✓' :
+    saveStatus === 'error' ? 'Error' : '';
+
+  return (
+    <div className="fixed inset-0 z-[950] flex flex-col bg-black/85 backdrop-blur-sm">
+      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#141414] px-4 py-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-gray-100">Edit cards</h2>
+          <span className="text-[11px] text-gray-500">{cards.length} {cards.length === 1 ? 'card' : 'cards'}</span>
+          <span className={classNames(
+            "text-[11px] transition-opacity",
+            statusText ? "opacity-100" : "opacity-0",
+            saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-gray-400"
+          )}>{statusText || '—'}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={addRow}
+            disabled={adding}
+            className="rounded-md border border-[#cb97a5]/40 bg-[#cb97a5]/20 px-3 py-1 text-xs font-semibold text-[#f6d7df] hover:bg-[#cb97a5]/30 disabled:opacity-50"
+          >
+            + Add row
+          </button>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1.5 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none"
+            aria-label="Close editor"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        <table className="min-w-full text-[11px] text-gray-200">
+          <thead className="sticky top-0 z-10 bg-[#1a1a1a]">
+            <tr className="border-b border-[#2a2a2a] text-left text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="px-2 py-2 w-12"></th>
+              <th className="px-2 py-2 min-w-[160px]">Name</th>
+              <th className="px-2 py-2 min-w-[90px]">Number</th>
+              <th className="px-2 py-2 min-w-[160px]">Set</th>
+              <th className="px-2 py-2 min-w-[70px]">Year</th>
+              <th className="px-2 py-2 min-w-[130px]">Release</th>
+              <th className="px-2 py-2 min-w-[100px]">Rarity</th>
+              <th className="px-2 py-2 min-w-[100px]">Era</th>
+              <th className="px-2 py-2 min-w-[90px]">Edition</th>
+              <th className="px-2 py-2 min-w-[130px]">Illustrator</th>
+              <th className="px-2 py-2 min-w-[220px]">Image URL</th>
+              <th className="px-2 py-2 min-w-[220px]">Image back URL</th>
+              <th className="px-2 py-2 min-w-[180px]">Notes</th>
+              <th className="px-2 py-2 min-w-[140px]">Origin</th>
+              <th className="px-2 py-2 min-w-[90px]">Language</th>
+              <th className="px-2 py-2 min-w-[90px]">PC</th>
+              <th className="px-2 py-2 w-12 text-center">Mew</th>
+              <th className="px-2 py-2 w-14 text-center">Cameo</th>
+              <th className="px-2 py-2 w-12 text-center">Intl</th>
+              <th className="px-2 py-2 w-12"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((card) => (
+              <EditRow
+                key={card.id}
+                card={card}
+                onUpdate={updateField}
+                onDelete={deleteRow}
+              />
+            ))}
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={20} className="px-4 py-8 text-center text-gray-500">
+                  No cards yet. Click "+ Add row" to create one.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const EditRow: React.FC<{
+  card: Card;
+  onUpdate: (id: string, field: keyof Card, value: any) => void;
+  onDelete: (id: string) => void;
+}> = ({ card, onUpdate, onDelete }) => {
+  const [draft, setDraft] = useState<Card>(card);
+  useEffect(() => { setDraft(card); }, [card]);
+
+  const text = (field: keyof Card, minW?: string) => (
+    <input
+      type="text"
+      value={(draft[field] as string | null | undefined) ?? ''}
+      onChange={(e) => setDraft(d => ({ ...d, [field]: e.target.value }))}
+      onBlur={() => {
+        const newVal = (draft[field] as string | null | undefined) ?? '';
+        const oldVal = (card[field] as string | null | undefined) ?? '';
+        if (newVal !== oldVal) onUpdate(card.id, field, newVal || null);
+      }}
+      className={classNames(
+        "w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 focus:bg-[#1a1a1a] outline-none",
+        minW
+      )}
+    />
+  );
+
+  const numberInput = (field: keyof Card) => (
+    <input
+      type="number"
+      value={(draft[field] as number | null | undefined) ?? ''}
+      onChange={(e) => setDraft(d => ({ ...d, [field]: e.target.value === '' ? null : Number(e.target.value) }))}
+      onBlur={() => {
+        const newVal = draft[field] as number | null;
+        const oldVal = (card[field] as number | null | undefined) ?? null;
+        if (newVal !== oldVal) onUpdate(card.id, field, newVal);
+      }}
+      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 focus:bg-[#1a1a1a] outline-none"
+    />
+  );
+
+  const dateInput = (field: keyof Card) => (
+    <input
+      type="date"
+      value={(draft[field] as string | null | undefined) ?? ''}
+      onChange={(e) => setDraft(d => ({ ...d, [field]: e.target.value || null }))}
+      onBlur={() => {
+        const newVal = draft[field] as string | null;
+        const oldVal = (card[field] as string | null | undefined) ?? null;
+        if (newVal !== oldVal) onUpdate(card.id, field, newVal);
+      }}
+      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 focus:bg-[#1a1a1a] outline-none [color-scheme:dark]"
+    />
+  );
+
+  const checkbox = (field: keyof Card) => (
+    <input
+      type="checkbox"
+      checked={!!draft[field]}
+      onChange={(e) => {
+        setDraft(d => ({ ...d, [field]: e.target.checked }));
+        onUpdate(card.id, field, e.target.checked);
+      }}
+      className="accent-[#cb97a5]"
+    />
+  );
+
+  const select = (field: keyof Card, options: string[]) => (
+    <select
+      value={(draft[field] as string | null | undefined) ?? ''}
+      onChange={(e) => {
+        const v = e.target.value || null;
+        setDraft(d => ({ ...d, [field]: v }));
+        onUpdate(card.id, field, v);
+      }}
+      className="w-full rounded border border-transparent bg-[#141414] px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 outline-none"
+    >
+      <option value="">—</option>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+
+  return (
+    <tr className="border-b border-[#1f1f1f] hover:bg-[#161616]">
+      <td className="px-2 py-1">
+        <div className="h-10 w-7 overflow-hidden rounded bg-[#0f0f0f]">
+          {draft.image ? (
+            <img src={draft.image} alt="" className="h-full w-full object-cover" onError={handleImgError} />
+          ) : null}
+        </div>
+      </td>
+      <td className="px-1 py-1">{text('name')}</td>
+      <td className="px-1 py-1">{text('number')}</td>
+      <td className="px-1 py-1">{text('set')}</td>
+      <td className="px-1 py-1">{numberInput('year')}</td>
+      <td className="px-1 py-1">{dateInput('release')}</td>
+      <td className="px-1 py-1">{text('rarity')}</td>
+      <td className="px-1 py-1">{text('era')}</td>
+      <td className="px-1 py-1">{select('edition', ['1st', 'Unlim', 'Error'])}</td>
+      <td className="px-1 py-1">{text('illustrator')}</td>
+      <td className="px-1 py-1">{text('image')}</td>
+      <td className="px-1 py-1">{text('image_back')}</td>
+      <td className="px-1 py-1">{text('notes')}</td>
+      <td className="px-1 py-1">{text('origin')}</td>
+      <td className="px-1 py-1">{text('language')}</td>
+      <td className="px-1 py-1">{select('pc', ['RAW', 'N/A', 'PSA1', 'PSA2', 'PSA3', 'PSA4', 'PSA5', 'PSA6', 'PSA7', 'PSA8', 'PSA9', 'PSA10'])}</td>
+      <td className="px-2 py-1 text-center">{checkbox('is_mew')}</td>
+      <td className="px-2 py-1 text-center">{checkbox('is_cameo')}</td>
+      <td className="px-2 py-1 text-center">{checkbox('is_intl')}</td>
+      <td className="px-2 py-1 text-center">
+        <button
+          onClick={() => onDelete(card.id)}
+          aria-label="Delete card"
+          className="rounded p-1 text-gray-500 hover:bg-rose-500/10 hover:text-rose-300 focus:outline-none"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>
+        </button>
+      </td>
+    </tr>
+  );
+};
+
+// ------------------------------
+// Stats Modal
+// ------------------------------
 const StatsModal: React.FC<{
   onClose: () => void;
   stats: {
     total: number;
     psa10: number;
-    psa10Cards: PokeCard[];
-    psa19Cards: PokeCard[];
-    needCards: PokeCard[];
-    allCards: PokeCard[];
+    psa10Cards: Card[];
+    psa19Cards: Card[];
+    needCards: Card[];
+    allCards: Card[];
   };
-  onSelectCard: (card: PokeCard) => void;
-  selectedCard: PokeCard | null;
-  onOpenCard: (card: PokeCard) => void;
+  onSelectCard: (card: Card) => void;
+  selectedCard: Card | null;
+  onOpenCard: (card: Card) => void;
   isMobile: boolean;
   detailsTab: "psa10" | "psa19" | "need" | "all";
   setDetailsTab: React.Dispatch<React.SetStateAction<"psa10" | "psa19" | "need" | "all">>;
-}> = ({
-  onClose,
-  stats,
-  onSelectCard,
-  selectedCard,
-  onOpenCard,
-  isMobile,
-  detailsTab,
-  setDetailsTab,
-}) => {
-  const [statsLang, setStatsLang] = useState<"en" | "jp">("jp");
+}> = ({ onClose, stats, onSelectCard, selectedCard, onOpenCard, isMobile, detailsTab, setDetailsTab }) => {
   const [statsView, setStatsView] = useState<"list" | "grid">("list");
   const gridCards = (() => {
     const base = detailsTab === "psa10" ? stats.psa10Cards
@@ -852,241 +850,139 @@ const StatsModal: React.FC<{
       if ((a.year || 0) !== (b.year || 0)) return (a.year || 0) - (b.year || 0);
       const nc = (a.number || "").localeCompare(b.number || "", undefined, { numeric: true, sensitivity: "base" });
       if (nc !== 0) return nc;
-      return (a.nameJP || a.nameEN).localeCompare(b.nameJP || b.nameEN, undefined, { sensitivity: "base" });
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
   })();
+
   return (
-  <div className="fixed inset-0 z-[900] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
-    <div className="relative w-full max-w-3xl h-[100dvh] overflow-hidden rounded-none sm:rounded-3xl border border-[#2a2a2a] bg-[#161616] shadow-2xl sm:h-[80vh]" onClick={(e) => e.stopPropagation()}>
-      <div className="stats-scroll flex h-full max-h-[100dvh] flex-col overflow-y-auto px-5 pb-6 pt-2 sm:h-full sm:max-h-none sm:overflow-hidden sm:px-6 sm:pt-6">
-        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-[11px] text-gray-100">PSA10 {stats.total ? `${stats.psa10}/${stats.total}` : "0/0"}</div>
-          </div>
-          <div
-            className="mt-2 h-2 w-full overflow-hidden rounded-full progress-hatch"
-            style={{
-              backgroundColor: "#262626",
-              backgroundImage: "repeating-linear-gradient(135deg, rgba(244,114,182,0.28) 0 2px, rgba(0,0,0,0) 2px 6px)",
-            }}
-          >
+    <div className="fixed inset-0 z-[900] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
+      <div className="relative w-full max-w-3xl h-[100dvh] overflow-hidden rounded-none sm:rounded-3xl border border-[#2a2a2a] bg-[#161616] shadow-2xl sm:h-[80vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="stats-scroll flex h-full max-h-[100dvh] flex-col overflow-y-auto px-5 pb-6 pt-2 sm:h-full sm:max-h-none sm:overflow-hidden sm:px-6 sm:pt-6">
+          <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-[11px] text-gray-100">PSA10 {stats.total ? `${stats.psa10}/${stats.total}` : "0/0"}</div>
+            </div>
             <div
-              className="h-full bg-emerald-300 transition-all"
-              style={{ width: `${stats.total ? Math.round((stats.psa10 / stats.total) * 100) : 0}%` }}
-            />
-          </div>
-          <div className="mt-2 text-[11px] text-gray-400">
-            Total cards: {stats.total} · PSA10 progress: {stats.total ? `${stats.psa10}/${stats.total}` : "0/0"}
-          </div>
-          {stats.total === 0 && (
-            <div className="mt-3 text-xs text-gray-500">No cards loaded yet.</div>
-          )}
-        </div>
-        <div className="mt-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 rounded-full border border-[#2a2a2a] bg-[#141414] p-1">
-            <button
-              type="button"
-              onClick={() => setDetailsTab("all")}
-              className={classNames(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                detailsTab === "all" ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-              )}
+              className="mt-2 h-2 w-full overflow-hidden rounded-full progress-hatch"
+              style={{
+                backgroundColor: "#262626",
+                backgroundImage: "repeating-linear-gradient(135deg, rgba(244,114,182,0.28) 0 2px, rgba(0,0,0,0) 2px 6px)",
+              }}
             >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => setDetailsTab("need")}
-              className={classNames(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                detailsTab === "need" ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-              )}
-            >
-              Need
-            </button>
-            <button
-              type="button"
-              onClick={() => setDetailsTab("psa19")}
-              className={classNames(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                detailsTab === "psa19" ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-              )}
-            >
-              PSA1-9
-            </button>
-            <button
-              type="button"
-              onClick={() => setDetailsTab("psa10")}
-              className={classNames(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                detailsTab === "psa10" ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-              )}
-            >
-              PSA10
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setStatsView(v => { const next = v === "grid" ? "list" : "grid"; trackEvent('stats_view_toggle', { view: next }); return next; })}
-            className={classNames(
-              "flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[#2a2a2a] bg-[#141414] text-xs transition-colors",
-              statsView === "grid" ? "text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-            )}
-            aria-label="Toggle grid view"
-          >
-            <i className="fa-solid fa-border-all" />
-          </button>
-          <div className="flex items-center gap-1 rounded-full border border-[#2a2a2a] bg-[#141414] p-1">
-            <button
-              type="button"
-              onClick={() => setStatsLang("en")}
-              className={classNames(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                statsLang === "en" ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-              )}
-            >
-              EN
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatsLang("jp")}
-              className={classNames(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                statsLang === "jp" ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-              )}
-            >
-              JP
-            </button>
-          </div>
-          </div>
-        </div>
-        {statsView === "grid" ? (
-          <div className="stats-scroll mt-4 grid grid-cols-3 gap-3 overflow-y-auto rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4 sm:flex-1 sm:min-h-0 sm:grid-cols-4">
-            {gridCards.map((card) => (
-              <button
-                key={card.id}
-                type="button"
-                onClick={() => onOpenCard(card)}
-                className="flex flex-col items-center gap-1 rounded-lg p-1 text-center transition-colors hover:bg-[#1f1f1f]"
-              >
-                <div className="w-full overflow-hidden rounded-[4.2%] border border-[#2a2a2a] bg-[#0f0f0f]">
-                  <img
-                    src={card.image}
-                    alt={card.nameEN}
-                    className="aspect-[63/88] w-full object-contain"
-                  />
-                </div>
-                <span className="w-full truncate text-[9px] leading-tight text-gray-300">
-                  {statsLang === "en" ? (card.nameEN || card.nameJP) : (card.nameJP || card.nameEN)}
-                </span>
-                <span className="text-[9px] text-[#cb97a5]/80">{card.number || "—"}{card.edition ? ` · ${card.edition}` : ""}</span>
-              </button>
-            ))}
-            {gridCards.length === 0 && (
-              <div className="col-span-full text-[11px] text-gray-500">None</div>
+              <div
+                className="h-full bg-emerald-300 transition-all"
+                style={{ width: `${stats.total ? Math.round((stats.psa10 / stats.total) * 100) : 0}%` }}
+              />
+            </div>
+            <div className="mt-2 text-[11px] text-gray-400">
+              Total cards: {stats.total} · PSA10 progress: {stats.total ? `${stats.psa10}/${stats.total}` : "0/0"}
+            </div>
+            {stats.total === 0 && (
+              <div className="mt-3 text-xs text-gray-500">No cards loaded yet.</div>
             )}
           </div>
-        ) : (
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:flex-1 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] sm:overflow-hidden">
-          <div className="stats-scroll stats-scroll-edge rounded-l-2xl rounded-r-none border border-[#2a2a2a] bg-[#141414] overflow-hidden pr-1 sm:min-h-0 sm:overflow-y-auto">
-            <div className="space-y-4">
-              {detailsTab === "psa10" && (
-                <StatsList
-                  cards={stats.psa10Cards}
-                  onSelectCard={isMobile ? onOpenCard : onSelectCard}
-                  selectedId={selectedCard?.id || null}
-                  language={statsLang}
-                  containerClassName="rounded-none border-0 bg-transparent p-4"
-                />
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 rounded-full border border-[#2a2a2a] bg-[#141414] p-1">
+              {(["all", "need", "psa19", "psa10"] as const).map(tab => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setDetailsTab(tab)}
+                  className={classNames(
+                    "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+                    detailsTab === tab ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
+                  )}
+                >
+                  {tab === "psa19" ? "PSA1-9" : tab === "psa10" ? "PSA10" : tab === "need" ? "Need" : "All"}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatsView(v => { const next = v === "grid" ? "list" : "grid"; trackEvent('stats_view_toggle', { view: next }); return next; })}
+              className={classNames(
+                "flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[#2a2a2a] bg-[#141414] text-xs transition-colors",
+                statsView === "grid" ? "text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
               )}
-              {detailsTab === "psa19" && (
-                <StatsList
-                  cards={stats.psa19Cards}
-                  onSelectCard={isMobile ? onOpenCard : onSelectCard}
-                  selectedId={selectedCard?.id || null}
-                  language={statsLang}
-                  containerClassName="rounded-none border-0 bg-transparent p-4"
-                />
-              )}
-              {detailsTab === "need" && (
-                <StatsList
-                  cards={stats.needCards}
-                  onSelectCard={isMobile ? onOpenCard : onSelectCard}
-                  selectedId={selectedCard?.id || null}
-                  language={statsLang}
-                  containerClassName="rounded-none border-0 bg-transparent p-4"
-                />
-              )}
-              {detailsTab === "all" && (
-                <StatsList
-                  cards={stats.allCards}
-                  onSelectCard={isMobile ? onOpenCard : onSelectCard}
-                  sortMode="release"
-                  selectedId={selectedCard?.id || null}
-                  language={statsLang}
-                  containerClassName="rounded-none border-0 bg-transparent p-4"
-                />
+              aria-label="Toggle grid view"
+            >
+              <i className="fa-solid fa-border-all" />
+            </button>
+          </div>
+          {statsView === "grid" ? (
+            <div className="stats-scroll mt-4 grid grid-cols-3 gap-3 overflow-y-auto rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4 sm:flex-1 sm:min-h-0 sm:grid-cols-4">
+              {gridCards.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => onOpenCard(card)}
+                  className="flex flex-col items-center gap-1 rounded-lg p-1 text-center transition-colors hover:bg-[#1f1f1f]"
+                >
+                  <div className="w-full overflow-hidden rounded-[4.2%] border border-[#2a2a2a] bg-[#0f0f0f]">
+                    <img
+                      src={card.image || IMG_FALLBACK}
+                      alt={card.name}
+                      className="aspect-[63/88] w-full object-contain"
+                    />
+                  </div>
+                  <span className="w-full truncate text-[9px] leading-tight text-gray-300">{card.name}</span>
+                  <span className="text-[9px] text-[#cb97a5]/80">{card.number || "—"}{card.edition ? ` · ${card.edition}` : ""}</span>
+                </button>
+              ))}
+              {gridCards.length === 0 && (
+                <div className="col-span-full text-[11px] text-gray-500">None</div>
               )}
             </div>
-          </div>
-          <div className="hidden sm:flex sm:min-h-0 sm:flex-col">
-            <StatsPreview card={selectedCard} onOpenCard={onOpenCard} />
-          </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:flex-1 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] sm:overflow-hidden">
+              <div className="stats-scroll stats-scroll-edge rounded-l-2xl rounded-r-none border border-[#2a2a2a] bg-[#141414] overflow-hidden pr-1 sm:min-h-0 sm:overflow-y-auto">
+                <div className="space-y-4">
+                  <StatsList
+                    cards={detailsTab === "psa10" ? stats.psa10Cards
+                      : detailsTab === "psa19" ? stats.psa19Cards
+                      : detailsTab === "need" ? stats.needCards
+                      : stats.allCards}
+                    onSelectCard={isMobile ? onOpenCard : onSelectCard}
+                    selectedId={selectedCard?.id || null}
+                    sortMode={detailsTab === "all" ? "release" : "default"}
+                    containerClassName="rounded-none border-0 bg-transparent p-4"
+                  />
+                </div>
+              </div>
+              <div className="hidden sm:flex sm:min-h-0 sm:flex-col">
+                <StatsPreview card={selectedCard} onOpenCard={onOpenCard} />
+              </div>
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="mt-3 w-full rounded-lg border border-[#cb97a5]/40 bg-[#cb97a5]/20 py-2 text-xs font-semibold text-[#f6d7df] sm:hidden"
+          >
+            Back to list
+          </button>
         </div>
-        )}
-        <button
-          onClick={onClose}
-          className="mt-3 w-full rounded-lg border border-[#cb97a5]/40 bg-[#cb97a5]/20 py-2 text-xs font-semibold text-[#f6d7df] sm:hidden"
-        >
-          Back to list
-        </button>
+        <style>{`
+          .stats-scroll { scrollbar-width: thin; scrollbar-color: rgba(203, 151, 165, 0.45) rgba(20, 20, 20, 0.9); }
+          .stats-scroll-edge { padding-right: 10px; margin-right: -10px; }
+          .stats-scroll::-webkit-scrollbar { width: 8px; }
+          .stats-scroll::-webkit-scrollbar-track { background: rgba(20, 20, 20, 0.9); }
+          .stats-scroll::-webkit-scrollbar-thumb { background: rgba(203, 151, 165, 0.45); border-radius: 999px; border: 2px solid rgba(20, 20, 20, 0.9); }
+          .stats-scroll::-webkit-scrollbar-thumb:hover { background: rgba(203, 151, 165, 0.7); }
+          .progress-hatch { background-size: 16px 16px; animation: hatchMove 1.5s linear infinite; }
+          @keyframes hatchMove { from { background-position: 0 0; } to { background-position: 16px 0; } }
+        `}</style>
       </div>
-      <style>{`
-        .stats-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(203, 151, 165, 0.45) rgba(20, 20, 20, 0.9);
-        }
-        .stats-scroll-edge {
-          padding-right: 10px;
-          margin-right: -10px;
-        }
-        .stats-scroll::-webkit-scrollbar {
-          width: 8px;
-        }
-        .stats-scroll::-webkit-scrollbar-track {
-          background: rgba(20, 20, 20, 0.9);
-        }
-        .stats-scroll::-webkit-scrollbar-thumb {
-          background: rgba(203, 151, 165, 0.45);
-          border-radius: 999px;
-          border: 2px solid rgba(20, 20, 20, 0.9);
-        }
-        .stats-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(203, 151, 165, 0.7);
-        }
-        .progress-hatch {
-          background-size: 16px 16px;
-          animation: hatchMove 1.5s linear infinite;
-        }
-        @keyframes hatchMove {
-          from { background-position: 0 0; }
-          to { background-position: 16px 0; }
-        }
-      `}</style>
     </div>
-  </div>
   );
 };
 
 const StatsList: React.FC<{
-  cards: PokeCard[];
-  onSelectCard: (card: PokeCard) => void;
+  cards: Card[];
+  onSelectCard: (card: Card) => void;
   selectedId: string | null;
   sortMode?: "default" | "release";
   containerClassName?: string;
-  language?: "en" | "jp";
-}> = ({ cards, onSelectCard, selectedId, sortMode = "default", containerClassName, language = "jp" }) => (
+}> = ({ cards, onSelectCard, selectedId, sortMode = "default", containerClassName }) => (
   <div className={classNames("rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4", containerClassName)}>
     {cards.length === 0 ? (
       <div className="text-[11px] text-gray-500">None</div>
@@ -1098,13 +994,9 @@ const StatsList: React.FC<{
             const yearA = a.year || 0;
             const yearB = b.year || 0;
             if (yearA !== yearB) return yearA - yearB;
-            const numA = a.number || "";
-            const numB = b.number || "";
-            const numCmp = numA.localeCompare(numB, undefined, { numeric: true, sensitivity: "base" });
+            const numCmp = (a.number || "").localeCompare(b.number || "", undefined, { numeric: true, sensitivity: "base" });
             if (numCmp !== 0) return numCmp;
-            const nameA = a.nameJP || a.nameEN;
-            const nameB = b.nameJP || b.nameEN;
-            return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+            return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
           })
           .map((card) => (
             <li key={card.id}>
@@ -1118,21 +1010,15 @@ const StatsList: React.FC<{
                     : "text-gray-300 hover:bg-[#1b1b1b] hover:text-gray-100"
                 )}
               >
-                <span
-                  className={classNames(
-                    "text-[10px] font-semibold",
-                    card.pc === "PSA10"
-                      ? "text-emerald-300"
-                      : card.pc
-                        ? "text-rose-300"
-                        : "text-gray-500"
-                  )}
-                >
+                <span className={classNames(
+                  "text-[10px] font-semibold",
+                  card.pc === "PSA10" ? "text-emerald-300" : card.pc ? "text-rose-300" : "text-gray-500"
+                )}>
                   {card.pc || ""}
                 </span>
                 <span className="text-gray-500">{card.year || "—"}</span>
                 <span className="text-gray-500">{card.number || "—"}</span>
-                <span className="text-gray-100">{language === "en" ? (card.nameEN || card.nameJP) : (card.nameJP || card.nameEN)}</span>
+                <span className="text-gray-100">{card.name}</span>
               </button>
             </li>
           ))}
@@ -1141,63 +1027,41 @@ const StatsList: React.FC<{
   </div>
 );
 
-const StatsPreview: React.FC<{ card: PokeCard | null; onOpenCard: (card: PokeCard) => void }> = ({ card, onOpenCard }) => (
+const StatsPreview: React.FC<{ card: Card | null; onOpenCard: (card: Card) => void }> = ({ card, onOpenCard }) => (
   <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-r-2xl rounded-l-none border border-[#2a2a2a] bg-[#141414] p-4">
     {!card ? (
       <div className="text-[11px] text-gray-500">Select a card to preview.</div>
     ) : (
       <div className="stats-scroll stats-scroll-edge flex-1 min-h-0 overflow-y-auto pr-2 space-y-3">
-          <button
-            type="button"
-            onClick={() => onOpenCard(card)}
-            className="relative w-full overflow-hidden border border-[#2a2a2a] bg-[#0f0f0f]"
-            style={{ borderRadius: "5.2% / 3.9%" }}
-            aria-label={`Open details for ${card.nameJP || card.nameEN}`}
-          >
+        <button
+          type="button"
+          onClick={() => onOpenCard(card)}
+          className="relative w-full overflow-hidden border border-[#2a2a2a] bg-[#0f0f0f]"
+          style={{ borderRadius: "5.2% / 3.9%" }}
+          aria-label={`Open details for ${card.name}`}
+        >
           <img
-            src={card.image}
-            alt={`${card.nameJP || card.nameEN} preview`}
+            src={card.image || IMG_FALLBACK}
+            alt={`${card.name} preview`}
             className="w-full h-auto object-contain"
             style={{ aspectRatio: "63 / 88", borderRadius: "5.2% / 3.9%" }}
             onError={handleImgError}
             referrerPolicy="strict-origin-when-cross-origin"
           />
         </button>
-        <div className="text-sm font-semibold text-gray-100 truncate">{card.nameJP || card.nameEN}</div>
+        <div className="text-sm font-semibold text-gray-100 truncate">{card.name}</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-gray-300">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-gray-500">Number</span>
-            <span className="text-gray-100">{card.number || "—"}</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-gray-500">Year</span>
-            <span className="text-gray-100">{card.year ? String(card.year) : "—"}</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-gray-500">Release</span>
-            <span className="text-gray-100">{formatDate(card.release) || "—"}</span>
-          </div>
-          {card.rarity && (
-            <div className="flex flex-col gap-0.5">
-              <span className="text-gray-500">Rarity</span>
-              <span className="text-gray-100">{card.rarity}</span>
-            </div>
-          )}
-          <div className="flex flex-col gap-0.5">
-            <span className="text-gray-500">Era</span>
-            <span className="text-gray-100">{card.era || "—"}</span>
-          </div>
-          {card.edition && (
-            <div className="flex flex-col gap-0.5">
-              <span className="text-gray-500">Edition</span>
-              <span className="text-gray-100">{card.edition}</span>
-            </div>
-          )}
+          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Number</span><span className="text-gray-100">{card.number || "—"}</span></div>
+          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Year</span><span className="text-gray-100">{card.year ? String(card.year) : "—"}</span></div>
+          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Release</span><span className="text-gray-100">{formatDate(card.release) || "—"}</span></div>
+          {card.rarity && (<div className="flex flex-col gap-0.5"><span className="text-gray-500">Rarity</span><span className="text-gray-100">{card.rarity}</span></div>)}
+          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Era</span><span className="text-gray-100">{card.era || "—"}</span></div>
+          {card.edition && (<div className="flex flex-col gap-0.5"><span className="text-gray-500">Edition</span><span className="text-gray-100">{card.edition}</span></div>)}
         </div>
-        {(card.notesEN || card.notesJP) && (
+        {card.notes && (
           <div className="text-[11px] text-gray-300">
             <div className="text-gray-500">Notes</div>
-            <div className="mt-1 text-gray-100 leading-snug">{card.notesEN || card.notesJP}</div>
+            <div className="mt-1 text-gray-100 leading-snug">{card.notes}</div>
           </div>
         )}
       </div>
@@ -1205,73 +1069,32 @@ const StatsPreview: React.FC<{ card: PokeCard | null; onOpenCard: (card: PokeCar
   </div>
 );
 
-const LoadingScreen: React.FC<{
-  progress: number;
-  swirlDelay: number;
-  showPassword?: boolean;
-  onPasswordSubmit?: (password: string) => void;
-  isAuthenticating?: boolean;
-}> = ({ progress, swirlDelay, showPassword, onPasswordSubmit, isAuthenticating }) => {
-  const [input, setInput] = useState("");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (input && !isAuthenticating && onPasswordSubmit) {
-      onPasswordSubmit(input);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-[#101010] flex flex-col items-center justify-center gap-4 p-4">
-      <div className="relative h-28 w-28">
-        <div className="loading-swirl absolute inset-0" aria-hidden="true" style={{ animationDelay: `${swirlDelay}s` }} />
-        <img
-          src="https://mew.cards/img/logo.png"
-          alt="Loading..."
-          className="h-full w-full absolute top-0 left-0 opacity-25"
-        />
-        <img
-          src="https://mew.cards/img/logo.png"
-          alt="Loading..."
-          className="h-full w-full absolute top-0 left-0 transition-all duration-300 ease-linear"
-          style={{
-            clipPath: `inset(${100 - progress}% 0 0 0)`
-          }}
-        />
-      </div>
-      {showPassword ? (
-        <form onSubmit={handleSubmit} className="flex flex-col items-center gap-4 h-16 justify-start">
-          <input
-            type="password"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="w-28 text-center h-10 rounded-lg border border-white/20 bg-[#101010] focus:bg-[#232323] px-3 text-sm text-gray-200 placeholder:text-gray-400 shadow-sm outline-none focus:ring-0 animate-password-in"
-            placeholder=""
-            disabled={isAuthenticating}
-          />
-          <div className="h-4" />
-        </form>
-      ) : (
-        <div className="h-16" />
-      )}
-      <div className="pointer-events-none absolute bottom-4 left-4 text-[10px] font-semibold text-[#cb97a5]/80">v{APP_VERSION}</div>
-      <div className="absolute bottom-[5%] flex gap-12 items-center">
-        <a href="https://mew.cards/gg" target="_blank" rel="noopener noreferrer" className="opacity-25 hover:opacity-90 transition-all duration-200">
-          <img src="https://mew.cards/gg/img/logo.png" alt="Grading Guard Visualizer" className="h-[45px] w-[45px] object-contain grayscale hover:grayscale-0 transition-all duration-200" />
-        </a>
-        <a href="https://centering.mew.cards" target="_blank" rel="noopener noreferrer" className="opacity-25 hover:opacity-90 transition-all duration-200">
-          <img src="https://mew.cards/img/centerlogo.png" alt="Centering Tool" className="h-[30px] w-[30px] object-contain grayscale hover:grayscale-0 transition-all duration-200" />
-        </a>
-      </div>
-      <style>{`
+// ------------------------------
+// Loading Screen
+// ------------------------------
+const LoadingScreen: React.FC<{ progress: number; swirlDelay: number }> = ({ progress, swirlDelay }) => (
+  <div className="fixed inset-0 bg-[#101010] flex flex-col items-center justify-center gap-4 p-4">
+    <div className="relative h-28 w-28">
+      <div className="loading-swirl absolute inset-0" aria-hidden="true" style={{ animationDelay: `${swirlDelay}s` }} />
+      <img
+        src="https://mew.cards/img/logo.png"
+        alt="Loading..."
+        className="h-full w-full absolute top-0 left-0 opacity-25"
+      />
+      <img
+        src="https://mew.cards/img/logo.png"
+        alt="Loading..."
+        className="h-full w-full absolute top-0 left-0 transition-all duration-300 ease-linear"
+        style={{ clipPath: `inset(${100 - progress}% 0 0 0)` }}
+      />
+    </div>
+    <div className="h-16" />
+    <div className="pointer-events-none absolute bottom-4 left-4 text-[10px] font-semibold text-[#cb97a5]/80">v{APP_VERSION}</div>
+    <style>{`
       @keyframes swirl {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
-      }
-      @keyframes passwordIn {
-        0% { opacity: 0; transform: translateY(6px); }
-        100% { opacity: 1; transform: translateY(0); }
       }
       .loading-swirl {
         background: radial-gradient(circle at 30% 30%, rgba(255, 209, 221, 0.85), rgba(203, 151, 165, 0.35) 45%, rgba(16, 16, 16, 0) 70%);
@@ -1288,49 +1111,32 @@ const LoadingScreen: React.FC<{
         -webkit-mask-repeat: no-repeat;
         -webkit-mask-position: center;
       }
-      .animate-password-in {
-        animation: passwordIn 500ms ease 150ms both;
-      }
     `}</style>
-    </div>
-  );
-};
+  </div>
+);
 
-
+// ------------------------------
+// Detail Modal
+// ------------------------------
 const FlipIcon = () => (
   <div className="absolute bottom-2 right-2 z-20 rounded-full bg-black/50 p-2 text-white/80 backdrop-blur-sm">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
   </div>
 );
 
-const DetailModal: React.FC<{
-  card: PokeCard;
-  onClose: () => void;
-  language: 'EN' | 'JP';
-  setLanguage: React.Dispatch<React.SetStateAction<'EN' | 'JP'>>;
-}> = ({ card, onClose, language, setLanguage }) => {
+const DetailModal: React.FC<{ card: Card; onClose: () => void }> = ({ card, onClose }) => {
   const [isFlipped, setIsFlipped] = useState(false);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
-  
-  // Reset flip state when card changes
-  useEffect(() => {
-    setIsFlipped(false);
-  }, [card.id]);
 
-  const displayName = (language === 'JP' && card.nameJP) ? card.nameJP : card.nameEN;
-  const displayNotes = (language === 'JP' && card.notesJP) ? card.notesJP : card.notesEN;
-  const displayOrigin = (language === 'JP' && card.originJP) ? card.originJP : card.originEN;
-  const languageLabel = language === 'JP' ? 'JA' : 'EN';
+  useEffect(() => { setIsFlipped(false); }, [card.id]);
 
   return (
-  <div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
       <div className="relative h-[100dvh] w-full max-w-3xl overflow-y-auto sm:h-auto sm:max-h-[90vh] sm:overflow-hidden rounded-none sm:rounded-3xl border border-[#2a2a2a] bg-[#161616] shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-3 right-3 z-10 rounded-full p-2 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none focus:ring-2 focus:ring-[#cb97a5]" aria-label="Close">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -1338,38 +1144,31 @@ const DetailModal: React.FC<{
         <div className="grid grid-cols-1 sm:grid-cols-2">
           <div className="flex flex-col items-center p-4 sm:p-6">
             <div
-              className={classNames(
-                  "relative w-full max-w-[520px] [perspective:2500px]",
-                  card.imageBack && "cursor-pointer"
-              )}
-              onClick={() => { if (card.imageBack) setIsFlipped(f => !f); }}
+              className={classNames("relative w-full max-w-[520px] [perspective:2500px]", card.image_back && "cursor-pointer")}
+              onClick={() => { if (card.image_back) setIsFlipped(f => !f); }}
             >
               <div
                 className="relative w-full aspect-[63/88] transition-transform duration-700 [transform-style:preserve-3d]"
                 style={{ transform: `rotateY(${isFlipped ? 180 : 0}deg)` }}
               >
-                {/* Front */}
                 <div className="absolute top-0 left-0 w-full h-full [backface-visibility:hidden] overflow-hidden bg-[#0f0f0f]" style={{ borderRadius: "5.2% / 3.9%" }}>
-                  <img src={card.image} alt={`${displayName} front`} className="h-full w-full object-fill" style={{ aspectRatio: "63/88" }} onError={handleImgError} referrerPolicy="strict-origin-when-cross-origin" />
+                  <img src={card.image || IMG_FALLBACK} alt={`${card.name} front`} className="h-full w-full object-fill" style={{ aspectRatio: "63/88" }} onError={handleImgError} referrerPolicy="strict-origin-when-cross-origin" />
                 </div>
-                {/* Back */}
-                {card.imageBack && (
+                {card.image_back && (
                   <div className="absolute top-0 left-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] overflow-hidden bg-[#0f0f0f]" style={{ borderRadius: "5.2% / 3.9%" }}>
-                    <img src={card.imageBack} alt={`${displayName} back`} className="h-full w-full object-fill" style={{ aspectRatio: "63/88" }} onError={handleImgError} referrerPolicy="strict-origin-when-cross-origin" />
+                    <img src={card.image_back} alt={`${card.name} back`} className="h-full w-full object-fill" style={{ aspectRatio: "63/88" }} onError={handleImgError} referrerPolicy="strict-origin-when-cross-origin" />
                   </div>
                 )}
               </div>
-              {card.imageBack && !isFlipped && <FlipIcon />}
+              {card.image_back && !isFlipped && <FlipIcon />}
             </div>
           </div>
           <div className="flex flex-col space-y-3 p-4 pt-2 sm:p-6 sm:max-h-[80vh] sm:overflow-y-auto">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-4xl font-semibold text-gray-100 leading-tight">{displayName}</h2>
+                <h2 className="text-4xl font-semibold text-gray-100 leading-tight">{card.name}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {card.number && card.number !== "N/A" && (
-                    <p className="text-base font-semibold text-[#cb97a5]">{card.number}</p>
-                  )}
+                  {card.number && card.number !== "N/A" && (<p className="text-base font-semibold text-[#cb97a5]">{card.number}</p>)}
                   {card.rarity && <Tag label={card.rarity} />}
                   {card.edition && (<span className="rounded bg-[#cb97a5]/15 px-2.5 py-0.5 text-[11px] font-semibold text-[#cb97a5]">{card.edition}</span>)}
                 </div>
@@ -1377,9 +1176,9 @@ const DetailModal: React.FC<{
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {card.set.includes("Promo") && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Promo</span>)}
-              {card.isIntl && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Intl</span>)}
-              {card.isCameo && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Cameo</span>)}
+              {card.set?.includes("Promo") && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Promo</span>)}
+              {card.is_intl && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Intl</span>)}
+              {card.is_cameo && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Cameo</span>)}
             </div>
 
             <div className="grid grid-cols-1 gap-2">
@@ -1388,21 +1187,12 @@ const DetailModal: React.FC<{
                 <InfoBubble label="Era" value={card.era} />
               </div>
               <InfoBubble label="Illustrator" value={card.illustrator} />
-              {displayOrigin && <InfoBubble label="Origin" value={displayOrigin} />}
+              {card.origin && <InfoBubble label="Origin" value={card.origin} />}
+              {card.set && <InfoBubble label="Set" value={card.set} />}
             </div>
 
-            {displayNotes && <InfoBubble label="Notes" value={displayNotes} />}
+            {card.notes && <InfoBubble label="Notes" value={card.notes} />}
 
-            {card.population && (
-              <div className="rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] p-3">
-                <div className="grid grid-cols-4 gap-3">
-                  <PopStat value={card.population.psa8} label="PSA8" />
-                  <PopStat value={card.population.psa9} label="PSA9" />
-                  <PopStat value={card.population.psa10} label="PSA10" />
-                  <PopStat value={card.population.bgsBL === null ? '—' : card.population.bgsBL} label="BGS BL" pill />
-                </div>
-              </div>
-            )}
             <div className="mt-2 flex items-center gap-2 sm:hidden">
               <button
                 onClick={onClose}
@@ -1410,53 +1200,10 @@ const DetailModal: React.FC<{
               >
                 Back to list
               </button>
-              <button
-                type="button"
-                onClick={() => setLanguage(l => { const next = l === 'JP' ? 'EN' : 'JP'; trackEvent('language_toggle', { language: next }); return next; })}
-                aria-label="Toggle language"
-                className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-3 py-2 text-[11px] font-black tracking-[0.16em] text-gray-100"
-              >
-                {languageLabel}
-              </button>
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setLanguage(l => (l === 'JP' ? 'EN' : 'JP'))}
-          aria-label="Toggle language"
-          className="hidden sm:inline-flex absolute bottom-4 right-4 z-20 rounded-lg border border-[#2a2a2a] bg-[#141414] px-3 py-2 text-[11px] font-black tracking-[0.16em] text-gray-100 shadow-sm hover:bg-[#1f1f1f] focus:outline-none focus:bg-[#2f2f2f]"
-        >
-          {languageLabel}
-        </button>
       </div>
     </div>
   );
 };
-
-// ------------------------------
-// 5) Dev tests (run in browser console)
-// ------------------------------
-function runDevTests() {
-  console.log("--- Running Dev Tests ---");
-  const base: PokeCard[] = [
-    { id: "a", nameEN: "Mew EN", nameJP: "ミュウ", number: "001", set: "Test", year: 2000, types: [], image: "a.png", isMew: true, edition: "1st" },
-    { id: "b", nameEN: "Lugia Cameo", nameJP: "ルギア", number: "002", set: "Test", year: 2001, types: [], image: "b.png", isCameo: true },
-    { id: "c", nameEN: "Mew Intl", number: "003", set: "Test", year: 2002, types: [], image: "c.png", isMew: true, isIntl: true, edition: "Unlim" },
-  ];
-
-  let out = applyFilters(base, { q: "ミュウ", mew: true, cameo: true, intl: true, sortBy: "yearDesc" });
-  console.assert(out.length === 1 && out[0].id === 'a', "Test Failed: search by Japanese name");
-
-  const csv = "name en,name jp,notes en,notes jp,origin en,origin jp,image front,image back\nCard1,カード1,Note1,ノート1,USA,米国,https://a.png,https://b.png\n";
-  const parsed = parseCSV(csv);
-  console.assert(parsed.length === 1 && parsed[0].nameEN === "Card1" && parsed[0].nameJP === "カード1", "Test Failed: parseCSV name en/jp");
-  console.assert(parsed[0].notesEN === "Note1" && parsed[0].notesJP === "ノート1", "Test Failed: parseCSV notes en/jp");
-  console.assert(parsed[0].originEN === "USA" && parsed[0].originJP === "米国", "Test Failed: parseCSV origin en/jp");
-  console.assert(parsed[0].image === "https://a.png" && parsed[0].imageBack === "https://b.png", "Test Failed: parseCSV image front/back");
-  
-  console.log("--- All Tests Passed ---");
-}
-
-// To run tests, open the browser console and call runDevTests()
-// runDevTests();
