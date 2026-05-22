@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graded Guard Visualizer</title>
+
+    <!-- Google Analytics (GA4) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-LJDN51BW74"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-LJDN51BW74');
+    </script>
+
+    <!-- Favicon -->
+    <link rel="icon" href="https://mew.cards/gg/img/favicon.png" type="image/png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configure Tailwind -->
+    <script>
+        tailwind.config = {
+            darkMode: ['class', '.dark-mode'],
+        }
+    </script>
+    
+    <!-- Icon Library -->
+    <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.js"></script>
+    
+    <!-- Cropper.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+
+    <!-- CRITICAL SCRIPT: Must be in HEAD to catch image load errors immediately -->
+    <script>
+        function handleImageError(img) {
+            // Prevent infinite loops if fallback fails
+            if(img.src && img.src === window.location.href) return;
+
+            // Only log warning if it's not an empty src (which happens on init)
+            if(img.src) {
+                 console.warn('Image failed to load:', img.id, img.src);
+            }
+            
+            // Hide the broken image
+            img.style.display = 'none';
+            
+            // Specific logic for the Slab Base
+            if (img.id === 'slabImageOverlay') {
+                // We need to wait for DOM to be ready to find the CSS overlay fallback
+                setTimeout(() => {
+                    const slabCss = document.getElementById('slabCssOverlay');
+                    const slabContainer = document.getElementById('slabContainer');
+                    if (slabCss && slabContainer) {
+                        slabCss.classList.remove('hidden');
+                        slabCss.classList.add('flex');
+                        slabContainer.classList.add('h-full');
+                        slabContainer.style.aspectRatio = "3.2 / 5.35"; 
+                    }
+                }, 0);
+            }
+            
+            // Specific logic for the Upload Placeholder
+            if (img.src && img.src.includes('upload.png')) {
+                setTimeout(() => {
+                    const fallback = img.nextElementSibling;
+                    if(fallback) {
+                        fallback.classList.remove('hidden'); 
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    }
+                }, 0);
+            }
+        }
+    </script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* --- UNIVERS 55 SETUP --- */
+        /* Expects 'Univers-55-roman.woff' in the same folder as this index.html */
+        @font-face {
+            font-family: 'Univers 55';
+            src: url('Univers-55-roman.woff') format('woff');
+            font-weight: 400;
+            font-style: normal;
+        }
+
+        body {
+            /* Prioritize Univers 55, then standard Univers, then fallback to Inter */
+            font-family: 'Univers 55', 'Univers', 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Loading Screen Styles */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            background-color: #101010; 
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.6s ease-out, visibility 0.6s;
+        }
+
+        #loading-screen.hidden-loader {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+        /* 3D Effects */
+        .guard-bumper {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 2px 2px 5px rgba(255, 255, 255, 0.3), inset -2px -2px 5px rgba(0, 0, 0, 0.2), 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+
+        .slab-css-style {
+            background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.1) 100%);
+            backdrop-filter: blur(2px);
+            border: 1px solid rgba(255,255,255,0.5);
+            box-shadow: inset 0 0 20px rgba(255,255,255,0.8);
+        }
+
+        .drop-active #cardPlaceholder {
+            background-color: rgba(59, 130, 246, 0.1);
+            border-color: #60a5fa; 
+            color: #3b82f6;
+        }
+
+        /* Dark Mode Styles */
+        body.dark-mode {
+            background-color: #18181b;
+            background-image: radial-gradient(#3f3f46 1px, transparent 1px);
+            color: #f4f4f5;
+        }
+        body.dark-mode .bg-white { background-color: #27272a; color: #f4f4f5; border-color: #3f3f46; }
+        body.dark-mode .text-slate-900 { color: #fafafa; }
+        body.dark-mode .text-slate-800 { color: #e4e4e7; }
+        body.dark-mode .text-slate-700 { color: #d4d4d8; }
+        body.dark-mode .text-slate-600 { color: #e4e4e7; }
+        body.dark-mode .text-slate-500 { color: #a1a1aa; }
+        body.dark-mode .bg-slate-100 { background-color: #3f3f46; }
+        
+        /* Company buttons */
+        .company-btn { color: #64748b; }
+        .company-btn:hover { color: #334155; }
+        .active-company { 
+            background-color: #ffffff; 
+            color: #0f172a; 
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); 
+        }
+        
+        body.dark-mode .company-btn { color: #a1a1aa; }
+        body.dark-mode .company-btn:hover { color: #f4f4f5; }
+        body.dark-mode .active-company { 
+            background-color: #52525b; 
+            color: #fff; 
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5); 
+            border-color: #52525b;
+        }
+
+        body.dark-mode .border-dashed { border-color: #52525b; }
+        body.dark-mode .text-blue-600 { color: #cb97a5; }
+
+        /* Theme Toggle */
+        .theme-toggle-wrapper { position: fixed; bottom: 20px; right: 20px; z-index: 50; }
+        @media (min-width: 1024px) {
+            .theme-toggle-wrapper { position: absolute; top: 20px; bottom: auto; right: 20px; }
+        }
+        
+        .toggle-checkbox { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
+        .toggle-label { position: relative; display: flex; align-items: center; justify-content: space-between; width: 50px; height: 26px; background-color: #e5e7eb; border-radius: 9999px; cursor: pointer; transition: background-color 0.2s ease-in; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+        .toggle-label:before { content: ""; position: absolute; left: 2px; top: 2px; width: 22px; height: 22px; border-radius: 50%; background-color: white; transition: transform 0.2s ease-in; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .toggle-checkbox:checked + .toggle-label { background-color: #7dd3fc; } /* Baby Blue */
+        .toggle-checkbox:checked + .toggle-label:before { transform: translateX(100%); }
+        .toggle-icon { width: 14px; height: 14px; color: white; z-index: 10; }
+        .icon-sun { margin-left: 5px; color: #f59e0b; }
+        .icon-moon { margin-right: 5px; color: #fff; }
+
+        /* 3D Tilt */
+        #previewWrapper { transform-style: preserve-3d; will-change: transform; transform: perspective(1000px) rotateX(0) rotateY(0) scale3d(1, 1, 1); }
+        .glare-overlay { position: absolute; inset: 0; opacity: 0; mix-blend-mode: overlay; pointer-events: none; z-index: 60; border-radius: inherit; transition: opacity 0.1s ease; }
+        
+        /* Ring Fix */
+        .guard-option-btn.ring-2 {
+            box-shadow: 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color), 0 0 0 calc(var(--tw-ring-offset-width) + 2px) var(--tw-ring-color);
+            border: none;
+        }
+        
+        /* Range Sliders */
+        input[type=range] {
+            height: 4px;
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            margin-top: -5px; /* You need to specify a margin in Chrome, but in Firefox and IE it is automatic */
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #e2e8f0;
+            border-radius: 2px;
+        }
+        .dark-mode input[type=range]::-webkit-slider-runnable-track {
+            background: #475569;
+        }
+        
+        /* Segmented Control */
+        .segmented-control {
+            display: flex;
+            background-color: #f1f5f9;
+            border-radius: 0.5rem;
+            padding: 0.25rem;
+            /* margin-bottom: 1rem; */
+        }
+        .dark-mode .segmented-control {
+            background-color: #3f3f46;
+        }
+        .segmented-btn {
+            flex: 1;
+            text-align: center;
+            padding: 0.35rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border-radius: 0.375rem;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .segmented-btn.active {
+            background-color: #7dd3fc; /* Baby Blue Accent */
+            color: #0f172a; /* Dark text on baby blue */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        .dark-mode .segmented-btn.active {
+            background-color: #7dd3fc; /* Baby Blue Accent */
+            color: #0f172a; /* Dark text on baby blue */
+        }
+        .segmented-btn:not(.active) {
+            color: #64748b;
+        }
+        .dark-mode .segmented-btn:not(.active) {
+            color: #a1a1aa;
+        }
+        
+        /* Cropper CSS Override */
+        .cropper-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Rotate button icon animation */
+        @keyframes half-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(180deg); }
+        }
+        .spin-once {
+            animation: half-spin 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col py-4 text-slate-800 relative transition-colors duration-300 lg:h-screen lg:overflow-hidden overflow-y-auto">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="w-28 h-28 relative">
+            <img src="https://mew.cards/gg/img/logo.png" alt="Loading..." class="absolute top-0 left-0 w-full h-full object-contain opacity-30">
+            <img id="loading-logo-fg" src="https://mew.cards/gg/img/logo.png" alt="Loading..." class="absolute top-0 left-0 w-full h-full object-contain transition-all duration-100 ease-linear" style="clip-path: inset(100% 0 0 0);">
+        </div>
+    </div>
+
+    <!-- Dark Mode Toggle -->
+    <div class="theme-toggle-wrapper">
+        <input type="checkbox" id="darkModeToggle" class="toggle-checkbox">
+        <label for="darkModeToggle" class="toggle-label">
+            <i data-lucide="sun" class="toggle-icon icon-sun w-3 h-3"></i>
+            <i data-lucide="moon" class="toggle-icon icon-moon w-3 h-3"></i>
+        </label>
+    </div>
+
+    <!-- Header -->
+    <header class="text-center pt-6 pb-2 px-4 animate-fade-in-down flex-none z-20 relative">
+        <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900 mb-2">
+            Graded Guard <br class="block md:hidden" /> <span style="color: #7dd3fc;">Visualizer</span> <!-- Baby Blue -->
+        </h1>
+    </header>
+
+    <!-- Main Container -->
+    <main class="w-full flex-1 relative flex flex-col px-4 lg:px-0 pb-20 lg:overflow-hidden">
+        
+        <!-- SIDEBAR REOPEN BUTTON -->
+        <button id="sidebar-open-btn" onclick="toggleSidebar()" class="hidden absolute left-4 top-1/2 -translate-y-1/2 z-30 bg-white dark:bg-slate-800 p-3 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-sky-400 dark:hover:text-sky-300 transition-all hover:scale-110 group" title="Open Controls">
+             <i data-lucide="panel-left-open" class="w-6 h-6"></i>
+        </button>
+
+        <!-- Controls Section -->
+        <div id="sidebar" class="w-full lg:w-80 flex-none order-2 lg:absolute lg:left-8 lg:top-1/2 lg:-translate-y-1/2 lg:z-20 bg-white rounded-2xl shadow-xl p-6 border border-slate-100 flex flex-col gap-6 transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] h-fit max-h-[85vh] overflow-y-auto">
+            
+            <button onclick="toggleSidebar()" class="hidden lg:flex absolute top-4 right-4 text-slate-400 hover:text-sky-500 dark:hover:text-sky-300 transition-colors" title="Collapse Panel">
+                <i data-lucide="panel-left-close" class="w-5 h-5"></i>
+            </button>
+
+            <!-- 1. Grading Company Selection -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wider">1. Grading Company</label>
+                <div class="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-xl">
+                    <button onclick="setCompany('psa')" id="btn-psa" class="company-btn active-company py-2 px-3 rounded-lg text-sm font-bold transition-all text-center">
+                        PSA
+                    </button>
+                    <div class="relative group">
+                        <button disabled id="btn-bgs" class="company-btn w-full py-2 px-3 rounded-lg text-sm font-bold transition-all text-center text-slate-400 cursor-not-allowed opacity-50">BGS</button>
+                        <div class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">Unavailable</div>
+                    </div>
+                    <div class="relative group">
+                        <button disabled id="btn-cgc" class="company-btn w-full py-2 px-3 rounded-lg text-sm font-bold transition-all text-center text-slate-400 cursor-not-allowed opacity-50">CGC</button>
+                        <div class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">Unavailable</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Guard Option -->
+            <div>
+                <div class="flex justify-between items-end mb-1">
+                    <label class="block text-sm font-semibold text-slate-700 uppercase tracking-wider mb-0">2. Guard Option</label>
+                    <button onclick="toggleFlip()" class="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 flex items-center gap-1 transition-colors" title="Rotate Guard 180°">
+                        <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                        <span class="font-medium">Rotate</span>
+                    </button>
+                </div>
+
+                <span id="colorNameDisplay" class="block text-sm font-medium text-sky-500 dark:text-sky-300 mb-3">Current: None</span>
+                
+                <!-- UPDATED CONTAINER: Flex column to stack categories -->
+                <div id="guardOptionsContainer" class="flex flex-col gap-4 mb-4 min-h-[40px]">
+                    <span class="text-xs text-slate-400 italic">Loading options...</span>
+                </div>
+                <input type="hidden" id="customColorInput" value="#d946ef">
+            </div>
+
+            <!-- 3. Adjust Card -->
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-sm font-semibold text-slate-700 uppercase tracking-wider mb-0">3. Adjust Card</label>
+                    <button onclick="resetFilters()" class="text-xs text-slate-400 hover:text-blue-500 flex items-center gap-1 transition-colors" title="Reset Filters">
+                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                    </button>
+                </div>
+                
+                <div class="bg-slate-50 dark:bg-white/5 p-3 rounded-xl space-y-3 border border-slate-100 dark:border-white/5">
+                    <!-- Brightness -->
+                    <div class="flex items-center gap-3" title="Brightness">
+                        <i data-lucide="sun" class="w-3.5 h-3.5 text-slate-400 flex-none"></i>
+                        <input type="range" id="brightRange" min="50" max="150" value="100" class="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700 accent-blue-500">
+                    </div>
+                    <!-- Contrast -->
+                    <div class="flex items-center gap-3" title="Contrast">
+                        <i data-lucide="contrast" class="w-3.5 h-3.5 text-slate-400 flex-none"></i>
+                        <input type="range" id="contrastRange" min="50" max="150" value="100" class="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700 accent-blue-500">
+                    </div>
+                    <!-- Saturation -->
+                    <div class="flex items-center gap-3" title="Saturation">
+                        <i data-lucide="droplet" class="w-3.5 h-3.5 text-slate-400 flex-none"></i>
+                        <input type="range" id="satRange" min="0" max="200" value="100" class="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700 accent-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions (No Label) -->
+            <div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" onclick="findByCert()" class="py-2.5 px-2 rounded-lg border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors" title="Find by Cert Number">
+                        <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                        by Cert
+                    </button>
+
+                    <button type="button" onclick="clearImage()" class="py-2.5 px-2 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors" title="Remove Image">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        Clear
+                    </button>
+
+                    <button id="saveBtn" type="button" onclick="downloadPreview()" class="py-2.5 px-2 rounded-lg border border-slate-200 dark:border-slate-500 text-slate-900 dark:text-slate-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors" title="Save Image">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        Save
+                    </button>
+
+                    <button type="button" onclick="copyToClipboard()" class="py-2.5 px-2 rounded-lg border border-slate-200 dark:border-slate-500 text-slate-900 dark:text-slate-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors" title="Copy Image to Clipboard">
+                        <i data-lucide="clipboard-copy" class="w-3.5 h-3.5"></i>
+                        Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview Section -->
+        <div class="flex-1 w-full h-full flex flex-col items-center justify-center order-1 lg:absolute lg:inset-0 lg:z-10 pointer-events-none">
+            <div id="previewWrapper" class="relative p-4 md:p-16 rounded-xl pointer-events-auto">
+                
+                <!-- LAYER 1: The GUARD Container -->
+                <div id="guardContainer" class="guard-bumper guard-psa bg-gray-900 w-[320px] md:w-[360px] flex items-center justify-center relative z-0">
+                    
+                    <!-- Guard Image -->
+                    <!-- UPDATED WIDTH: 107.22% for new aspect ratio (609/568) -->
+                    <img id="guardImageOverlay" src="" 
+                         onerror="handleImageError(this)"
+                         class="absolute z-50 pointer-events-none hidden" 
+                         style="width: 107.22%; max-width: none; left: 50%; top: 50%; transform: translate(-50%, -50%); transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);">
+
+                    <!-- Slab Container -->
+                    <div id="slabContainer" class="company-psa w-full relative overflow-hidden bg-white/10 rounded-[18px]" style="container-type: inline-size;">
+
+                        <!-- Guard Label Overlay -->
+                        <div id="guardLabelText" class="absolute z-20 text-[#242424] uppercase tracking-wide" 
+                             style="top: 6.9%; left: 12.1%; font-size: 3.5cqw; font-family: 'Univers 55', sans-serif; -webkit-text-stroke: 0.01em #242424; opacity: 0.9;">
+                        </div>
+
+                        <!-- Glare Overlay -->
+                        <div id="glareOverlay" class="glare-overlay"></div>
+
+                        <!-- LAYER 2: The SLAB BASE IMG -->
+                        <img id="slabImageOverlay" src="https://mew.cards/gg/img/base_PSA.png" 
+                             onerror="handleImageError(this)"
+                             class="w-full h-auto relative z-10 pointer-events-none">
+
+                        <!-- LAYER 3: The CARD & UPLOAD ZONE -->
+                        <!-- UPDATED: Removed cursor-pointer if image loaded -->
+                        <div id="cardLayer" 
+                             class="absolute z-20 flex items-center justify-center transition-all duration-300 cursor-pointer group">
+                             
+                             <input type="file" id="fileInput" accept="image/*" class="hidden">
+
+                             <!-- USER IMAGE: Filters applied here -->
+                             <img id="userCardImage" src="" class="hidden object-contain shadow-sm pointer-events-none" alt="User Card">
+                             
+                             <!-- Placeholder -->
+                             <div id="cardPlaceholder" class="w-full h-full flex items-center justify-center relative">
+                                <img src="https://mew.cards/gg/img/upload.png" 
+                                     alt="Upload Here" 
+                                     onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden'); if(typeof lucide!=='undefined') lucide.createIcons();"
+                                     class="w-full h-full object-contain opacity-100 grayscale-[50%] group-hover:grayscale-0 transition-all duration-300" />
+                                     
+                                <!-- Fallback Icon -->
+                                <div class="hidden absolute inset-0 flex flex-col items-center justify-center text-gray-400/50 group-hover:text-gray-400 transition-colors">
+                                    <i data-lucide="upload-cloud" class="w-12 h-12 mb-1"></i>
+                                    <span class="text-[10px] font-bold uppercase tracking-widest">Upload</span>
+                                </div>
+                             </div>
+                        </div>
+
+                        <!-- LAYER 4: PLASTIC GLOSS -->
+                        <div class="absolute inset-0 z-30 pointer-events-none opacity-20 bg-gradient-to-tr from-transparent via-white to-transparent mix-blend-overlay"></div>
+                        <div class="slab-shine z-30"></div>
+
+                        <!-- LAYER 5: Legacy CSS Overlay -->
+                        <div id="slabCssOverlay" class="absolute inset-0 z-40 hidden flex-col slab-css-style">
+                             <div class="slab-shine"></div>
+                             <div id="cssLabelArea" class="h-[22%] w-full border-b border-gray-200 flex flex-col items-center justify-center bg-gray-50/50 p-2 relative z-20">
+                                <div class="w-full h-full border border-gray-200 bg-white shadow-sm flex flex-col items-center justify-center px-2 py-1 relative overflow-hidden">
+                                    <div id="labelBorder" class="absolute inset-0 border-4 border-yellow-600 opacity-100 pointer-events-none"></div>
+                                    <div class="flex justify-between w-full items-start mb-1">
+                                        <span class="text-[8px] font-bold text-gray-400 tracking-tighter">12345678</span>
+                                        <span id="companyLabelText" class="text-[10px] font-bold text-gray-800 tracking-wider">BGS</span>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-[10px] uppercase font-bold text-slate-800 leading-tight">2025 PREVIEW</div>
+                                    </div>
+                                    <div class="absolute bottom-1 right-2 flex items-center gap-1">
+                                        <div class="text-lg font-bold text-slate-900 leading-none">9.5</div>
+                                    </div>
+                                </div>
+                             </div>
+                             <div class="flex-1"></div> 
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Socials (Absolute Center Bottom) -->
+        <div class="absolute bottom-2 w-full flex justify-center gap-4 z-30 pointer-events-none">
+            <a href="https://x.com/mewmewnami" target="_blank" rel="noopener noreferrer" class="pointer-events-auto text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="@mewmewnami">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+                </svg>
+            </a>
+            <a href="https://instagram.com/myu" target="_blank" rel="noopener noreferrer" class="pointer-events-auto text-slate-400 hover:text-pink-500 transition-colors" title="@myu">
+                <i data-lucide="instagram" class="w-4 h-4"></i>
+            </a>
+        </div>
+
+    </main>
+
+    <!-- Crop Modal -->
+    <!-- UPDATED: Close Button outside (fixed position). Footer toggle + buttons logic restored. -->
+    <div id="cropModal" class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm hidden flex-col items-center justify-center p-4">
+        
+        <!-- External Close Button -->
+        <button onclick="closeModal()" class="fixed top-6 right-6 z-[110] text-white hover:text-gray-300 transition-colors">
+            <i data-lucide="x" class="w-8 h-8"></i>
+        </button>
+
+        <div class="bg-white dark:bg-slate-900 rounded-2xl w-[90vw] h-[85vh] max-w-7xl shadow-2xl overflow-hidden flex flex-col relative">
+            
+            <!-- Image Area (No header, just padding) -->
+            <div class="flex-1 w-full min-h-0 bg-black/5 dark:bg-black/50 relative overflow-hidden flex items-center justify-center p-6">
+                 <!-- Image wrapper -->
+                 <div class="w-full h-full flex items-center justify-center">
+                    <img id="imageToCrop" src="" alt="Crop Preview" class="max-w-full max-h-full block opacity-0">
+                 </div>
+            </div>
+
+            <!-- Footer: Toggle Left, Buttons Right -->
+            <div class="flex-none p-4 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 relative z-20">
+                
+                <!-- Toggle (Moved to footer) -->
+                <div class="segmented-control bg-slate-100 dark:bg-slate-800 mb-0">
+                     <div id="modalModeCardBtn" class="segmented-btn active px-4 py-1.5 text-xs" onclick="setUploadModeInModal('card')">Card</div>
+                     <div id="modalModeSlabBtn" class="segmented-btn px-4 py-1.5 text-xs" onclick="setUploadModeInModal('slab')">Slab</div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button onclick="closeModal()" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+                    <!-- UPDATED: Removed bold, using font-medium. Baby Blue bg. -->
+                    <button onclick="applyCrop()" class="px-6 py-2 rounded-lg text-sm font-medium bg-[#7dd3fc] text-slate-900 hover:bg-[#7dd3fc]/80 shadow-lg transition-all">Apply Card</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Version -->
+    <div id="app-version" style="position:fixed;bottom:8px;left:12px;font-size:11px;color:#94a3b8;z-index:50;pointer-events:none;font-family:monospace;letter-spacing:0.05em;">v1.6</div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+            
+            // Just trigger the fetch, which triggers the preload
+            fetchGuardOptions();
+            
+            // Failsafe for loader: Hide after 8 seconds no matter what
+            setTimeout(() => {
+                const loader = document.getElementById('loading-screen');
+                if (loader && !loader.classList.contains('hidden-loader')) {
+                    loader.classList.add('hidden-loader');
+                    document.body.classList.remove('overflow-hidden');
+                }
+            }, 8000);
+
+            const ringObserver = new MutationObserver((mutations) => {
+                 mutations.forEach((mutation) => {
+                     if (mutation.attributeName === 'class') {
+                         const isDark = document.body.classList.contains('dark-mode');
+                         const offsetColor = isDark ? '#27272a' : '#ffffff';
+                         const activeBtns = document.querySelectorAll('.guard-option-btn.ring-2');
+                         activeBtns.forEach(btn => {
+                            btn.style.setProperty('--tw-ring-offset-color', offsetColor);
+                         });
+                         // Update non-selected buttons to match background as well for hover effect
+                         const allBtns = document.querySelectorAll('.guard-option-btn');
+                         allBtns.forEach(btn => {
+                            if(!btn.classList.contains('ring-2')) {
+                                btn.style.setProperty('--tw-ring-offset-color', offsetColor);
+                            }
+                         });
+                     }
+                 });
+            });
+            ringObserver.observe(document.body, { attributes: true });
+        });
+
+        // DOM Elements
+        const guardContainer = document.getElementById('guardContainer');
+        const slabContainer = document.getElementById('slabContainer');
+        const previewWrapper = document.getElementById('previewWrapper');
+        const glareOverlay = document.getElementById('glareOverlay');
+        const guardOptionsContainer = document.getElementById('guardOptionsContainer');
+        const colorNameDisplay = document.getElementById('colorNameDisplay');
+        const loadingLogoFg = document.getElementById('loading-logo-fg');
+        const loadingScreen = document.getElementById('loading-screen');
+        const guardLabelText = document.getElementById('guardLabelText');
+        
+        const cardLayerEl = document.getElementById('cardLayer');
+        const slabImageOverlay = document.getElementById('slabImageOverlay');
+        const slabCssOverlay = document.getElementById('slabCssOverlay');
+        const guardImageOverlay = document.getElementById('guardImageOverlay');
+        const userCardImage = document.getElementById('userCardImage');
+        const cardPlaceholder = document.getElementById('cardPlaceholder');
+        
+        const btnPsa = document.getElementById('btn-psa');
+        const btnBgs = document.getElementById('btn-bgs');
+        const btnCgc = document.getElementById('btn-cgc');
+        
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
+
+        // Image Adjustment Sliders
+        const brightRange = document.getElementById('brightRange');
+        const contrastRange = document.getElementById('contrastRange');
+        const satRange = document.getElementById('satRange');
+
+        // Modal Toggle Buttons
+        const modalModeCardBtn = document.getElementById('modalModeCardBtn');
+        const modalModeSlabBtn = document.getElementById('modalModeSlabBtn');
+
+        function toggleSidebar() {
+            if (sidebar.classList.contains('translate-x-[-120%]')) {
+                sidebar.classList.remove('translate-x-[-120%]', 'opacity-0', 'pointer-events-none');
+                sidebarOpenBtn.classList.add('hidden');
+                sidebarOpenBtn.classList.remove('flex');
+            } else {
+                sidebar.classList.add('translate-x-[-120%]', 'opacity-0', 'pointer-events-none');
+                sidebarOpenBtn.classList.remove('hidden');
+                sidebarOpenBtn.classList.add('flex');
+            }
+        }
+
+        // CONSTANTS
+        const PSA_REF_WIDTH = 1200; 
+        const PSA_REF_HEIGHT = 2102; 
+        const PSA_CARD_WIDTH_PX = 940;
+        const PSA_CARD_BOTTOM_PX = 166;
+        const PSA_BASE_IMG_URL = 'https://mew.cards/gg/img/base_PSA.png';
+
+        // PRELOAD LOGIC
+        const BASE_ASSETS = [
+            'https://mew.cards/gg/img/logo.png',
+            PSA_BASE_IMG_URL,
+            'https://mew.cards/gg/img/upload.png'
+        ];
+
+        let resourcesToLoad = [];
+        let loadedCount = 0;
+        
+        function updateLoader() {
+            loadedCount++;
+            // Prevent divide by zero if resourcesToLoad is empty
+            const total = resourcesToLoad.length || 1; 
+            const percentage = Math.round((loadedCount / total) * 100);
+            
+            if (loadingLogoFg) {
+                loadingLogoFg.style.clipPath = `inset(${100 - percentage}% 0 0 0)`;
+            }
+
+            if (loadedCount >= total) {
+                setTimeout(() => {
+                    if (loadingScreen) loadingScreen.classList.add('hidden-loader');
+                    document.body.classList.remove('overflow-hidden'); 
+                }, 500); 
+            }
+        }
+
+        // DATA FETCHING
+        const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ5OLGw_I77Cxa-6Lq15tV3-pPFgBqcVzQmhYH8SiuyDK8vdvGn4rRH8DAFxdh00IWXXY6savQ5yiPx/pub?output=csv';
+        const CACHE_KEY = 'gg_guard_options_v1';
+        const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+        let allGuardOptions = [];
+        let currentCompany = 'PSA'; 
+        let currentSelectionName = 'None';
+        let uploadMode = 'card'; // 'card' or 'slab'
+        let isImageLoaded = false;
+
+        // FALLBACK DATA (Added Set property for testing)
+        const FALLBACK_OPTIONS = [
+             { Grader: 'PSA', Name: 'Fuschia', 'Color 1': '#be81a1', 'Color 2': '#5c4065', 'Color 3': '', Highlight: '#f0abfc', Image: 'GG_PSA_Fuschia.png', Set: 'Limited' },
+             { Grader: 'PSA', Name: 'Eclipse', 'Color 1': '#ffffff', 'Color 2': '#000000', 'Color 3': '', Highlight: '#94a3b8', Image: 'GG_PSA_Eclipse.png', Set: 'Standard' },
+             { Grader: 'PSA', Name: 'Glitter Test', 'Color 1': '#222', 'Color 2': '#000', 'Glitter': '#FFD700', Highlight: '#FFD700', Image: '', Set: 'Special' }
+        ];
+
+        function parseCSV(csv) {
+            const lines = csv.split(/\r?\n/).filter(line => line.trim() !== '');
+            const clean = (val) => {
+                val = val ? val.trim() : '';
+                if (val.charCodeAt(0) === 0xFEFF) val = val.slice(1);
+                if (val.startsWith('"') && val.endsWith('"')) return val.slice(1, -1).trim();
+                return val;
+            };
+            const headers = lines[0].split(',').map(h => clean(h).trim()); 
+            
+            return lines.slice(1).map(line => {
+                const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                const entry = {};
+                headers.forEach((h, i) => {
+                    if(values[i] !== undefined) {
+                        entry[h] = clean(values[i]);
+                    }
+                });
+                return entry;
+            });
+        }
+        
+        function normalizeHex(hex) {
+            if (!hex) return '#000000';
+            hex = hex.trim();
+
+            if (hex.toLowerCase().includes('fuschia') || hex.toLowerCase().includes('fuchsia')) {
+                return '#be81a1'; 
+            }
+            if (hex.toLowerCase() === 'eclipse') return '#ffffff';
+
+            const hexPattern = /^#?[0-9A-Fa-f]{3,8}$/;
+            if (hexPattern.test(hex) && !hex.startsWith('#')) {
+                return '#' + hex;
+            }
+            return hex;
+        }
+
+        async function fetchGuardOptions() {
+            let parsed = [];
+            try {
+                try {
+                    const raw = localStorage.getItem(CACHE_KEY);
+                    if (raw) {
+                        const { ts, data } = JSON.parse(raw);
+                        if (Date.now() - ts < CACHE_TTL && data.length > 0) parsed = data;
+                    }
+                } catch(e) {}
+
+                if (!parsed.length) {
+                    const response = await fetch(SHEET_URL);
+                    if(!response.ok) throw new Error("Bad response");
+                    const text = await response.text();
+                    parsed = parseCSV(text);
+                    if (parsed.length > 0) {
+                        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: parsed })); } catch(e) {}
+                    }
+                }
+
+                if(parsed.length > 0) {
+                    allGuardOptions = parsed;
+                } else {
+                    allGuardOptions = FALLBACK_OPTIONS;
+                }
+            } catch (error) {
+                console.error('Error fetching options, using fallback:', error);
+                allGuardOptions = FALLBACK_OPTIONS;
+            }
+            
+            // START PRELOADING HERE
+            // 1. Collect all image URLs from the data options
+            const dynamicImages = allGuardOptions
+                .map(opt => opt.Image ? `https://mew.cards/gg/img/${opt.Image}` : null)
+                .filter(url => url !== null);
+
+            // 2. Combine with base assets and deduplicate
+            resourcesToLoad = [...new Set([...BASE_ASSETS, ...dynamicImages])];
+            
+            // 3. Start loading them
+            if (resourcesToLoad.length > 0) {
+                resourcesToLoad.forEach(url => {
+                    const img = new Image();
+                    img.onload = updateLoader;
+                    img.onerror = () => { console.warn("Failed to load asset:", url); updateLoader(); };
+                    img.src = url;
+                });
+            } else {
+                updateLoader(); // Force load if empty
+            }
+
+            // Initialize App UI
+            setCompany('psa'); 
+        }
+
+        function renderGuardOptions(grader) {
+            guardOptionsContainer.innerHTML = '';
+            const options = allGuardOptions.filter(opt => opt.Grader && opt.Grader.toUpperCase() === grader.toUpperCase());
+
+            if (options.length === 0) {
+                guardOptionsContainer.innerHTML = '<span class="text-xs text-slate-400 italic">No options available.</span>';
+                return;
+            }
+
+            // GROUPING LOGIC
+            const setsMap = new Map(); 
+            options.forEach(opt => {
+                const setName = opt.Set || 'Standard'; 
+                if (!setsMap.has(setName)) {
+                    setsMap.set(setName, []);
+                }
+                setsMap.get(setName).push(opt);
+            });
+
+            const isDark = document.body.classList.contains('dark-mode');
+            const offsetColor = isDark ? '#27272a' : '#ffffff';
+
+            setsMap.forEach((groupOptions, setName) => {
+                // Create Group Container
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'w-full mb-2';
+                
+                // Create Header
+                const header = document.createElement('h3');
+                header.className = 'text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 dark:border-slate-700 pb-1';
+                header.textContent = setName;
+                groupDiv.appendChild(header);
+                
+                // Create Button Grid
+                const grid = document.createElement('div');
+                grid.className = 'flex flex-wrap gap-2';
+                
+                // Sanitize set name for ID usage
+                const safeSetName = setName.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+
+                groupOptions.forEach((opt, index) => {
+                    const btn = document.createElement('button');
+                    // Use a unique ID based on set and name to avoid conflicts
+                    const safeName = opt.Name ? opt.Name.replace(/\s+/g, '-').toLowerCase() : `opt-${index}`;
+                    btn.id = `btn-${safeSetName}-${safeName}-${index}`;
+                    btn.title = opt.Name || 'Unknown';
+                    
+                    // Button Base Style
+                    btn.className = `w-14 h-6 rounded-md shadow-md hover:scale-105 hover:ring-2 transition-all duration-200 ring-offset-2 focus:outline-none guard-option-btn relative overflow-hidden bg-slate-200 dark:bg-slate-700`;
+                    
+                    const c1 = normalizeHex(opt['Color 1']);
+                    const c2 = opt['Color 2'] ? normalizeHex(opt['Color 2']) : null;
+                    const c3 = opt['Color 3'] ? normalizeHex(opt['Color 3']) : null;
+                    const c4 = opt['Color 4'] ? normalizeHex(opt['Color 4']) : null; 
+
+                    let bgStyle = '';
+                    if (c4) {
+                         bgStyle = `linear-gradient(135deg, ${c1} -10%, ${c1} 25%, ${c2} 25%, ${c2} 50%, ${c3} 50%, ${c3} 75%, ${c4} 75%, ${c4} 110%)`;
+                    } else if (c3) {
+                         bgStyle = `linear-gradient(135deg, ${c1} -10%, ${c1} 33.33%, ${c2} 33.33%, ${c2} 66.66%, ${c3} 66.66%, ${c3} 110%)`;
+                    } else if (c2) {
+                         bgStyle = `linear-gradient(135deg, ${c1} -10%, ${c1} 50%, ${c2} 50%, ${c2} 110%)`; 
+                    } else {
+                         bgStyle = c1;
+                    }
+
+                    btn.style.background = bgStyle;
+                    btn.style.backgroundColor = c1; 
+
+                    const sheen = document.createElement('div');
+                    sheen.className = 'absolute inset-0 rounded-md bg-gradient-to-tr from-white/40 to-transparent pointer-events-none';
+                    btn.appendChild(sheen);
+                    
+                    // Border Overlay
+                    const borderOverlay = document.createElement('div');
+                    borderOverlay.className = 'absolute inset-0 rounded-md border border-black/10 dark:border-white/10 pointer-events-none';
+                    btn.appendChild(borderOverlay);
+                    
+                    let highlight = opt.Highlight ? normalizeHex(opt.Highlight) : c1;
+                    if (!highlight || highlight.toLowerCase() === '#ffffff' || highlight.toLowerCase() === '#fff') {
+                        highlight = '#94a3b8'; 
+                    }
+                    
+                    btn.style.setProperty('--tw-ring-color', highlight);
+                    btn.style.setProperty('--tw-ring-offset-color', offsetColor);
+
+                    // --- GLITTER EFFECT ---
+                    if (opt.Glitter) {
+                        const glitterColor = normalizeHex(opt.Glitter);
+                        const glitterContainer = document.createElement('div');
+                        glitterContainer.className = 'absolute inset-0 pointer-events-none z-10';
+                        
+                        // Create randomized diamonds
+                        // "Double the number" and "Half as random": Using a 4x4 grid (16 particles) ensures even distribution
+                        const particleCount = 16; 
+                        
+                        for (let i = 0; i < particleCount; i++) {
+                            const diamond = document.createElement('div');
+                            // "Make them smaller": Random size between 1px and 2.5px
+                            const size = Math.random() * 1.5 + 1; 
+                            
+                            // Jittered Grid Logic:
+                            // Divide button into 4x4 grid. Place one diamond in each cell with random offset.
+                            const col = i % 4;
+                            const row = Math.floor(i / 4);
+                            
+                            // Each cell is 25% wide. We allow jitter within that cell.
+                            // Adding slight padding (2%) so they don't sit exactly on the grid lines
+                            const leftPos = (col * 25) + Math.random() * 20 + 2; 
+                            const topPos = (row * 25) + Math.random() * 20 + 2;
+
+                            Object.assign(diamond.style, {
+                                width: `${size}px`,
+                                height: `${size}px`,
+                                backgroundColor: glitterColor,
+                                position: 'absolute',
+                                left: `${leftPos}%`, 
+                                top: `${topPos}%`,
+                                transform: 'translate(-50%, -50%) rotate(45deg)', // Diamond shape
+                                opacity: Math.random() * 0.6 + 0.4, // Opacity between 0.4 and 1.0
+                                boxShadow: `0 0 1px ${glitterColor}` // Slight glow
+                            });
+                            
+                            glitterContainer.appendChild(diamond);
+                        }
+                        
+                        btn.appendChild(glitterContainer);
+                    }
+                    // ----------------------
+
+                    const imgUrl = opt.Image ? `https://mew.cards/gg/img/${opt.Image}` : '';
+                    
+                    btn.dataset.hex = c1; 
+                    btn.dataset.name = opt.Name;
+                    btn.dataset.image = imgUrl;
+                    btn.dataset.highlight = highlight; 
+
+                    btn.onmouseenter = () => {
+                        colorNameDisplay.innerText = `${opt.Name}`;
+                    };
+                    
+                    btn.onmouseleave = () => {
+                        colorNameDisplay.innerText = `Current: ${currentSelectionName}`;
+                    };
+
+                    btn.onclick = () => {
+                        setGuardOption(c1, opt.Name, imgUrl, btn.id, highlight);
+                    };
+
+                    grid.appendChild(btn);
+                });
+                
+                groupDiv.appendChild(grid);
+                guardOptionsContainer.appendChild(groupDiv);
+            });
+        }
+
+        let flipAngle = 0;
+
+        darkModeToggle.addEventListener('change', (e) => {
+            if (e.target.checked) document.body.classList.add('dark-mode');
+            else document.body.classList.remove('dark-mode');
+            
+            const offsetColor = e.target.checked ? '#27272a' : '#ffffff';
+            const allBtns = document.querySelectorAll('.guard-option-btn');
+            allBtns.forEach(btn => {
+                btn.style.setProperty('--tw-ring-offset-color', offsetColor);
+            });
+        });
+
+        // 3D Tilt
+        previewWrapper.addEventListener('mousemove', (e) => {
+            const rect = previewWrapper.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const px = x / rect.width;
+            const py = y / rect.height;
+            const featherX = Math.sin(px * Math.PI);
+            const featherY = Math.sin(py * Math.PI);
+            const strength = Math.pow(featherX * featherY, 0.5);
+            const rotateX = (0.5 - py) * 6 * strength; 
+            const rotateY = (px - 0.5) * 6 * strength; 
+            previewWrapper.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1, 1, 1)`;
+            const glareX = 50 + (rotateY * 15); 
+            const glareY = 50 - (rotateX * 15);
+            const alpha = (0.35 * Math.min(1, Math.hypot(rotateX, rotateY) / 3)).toFixed(2); 
+            glareOverlay.style.opacity = alpha;
+            glareOverlay.style.background = `radial-gradient(circle at ${glareX}% ${glareY}%, rgba(255,255,255,0.6), transparent 60%)`;
+        });
+
+        previewWrapper.addEventListener('mouseleave', () => {
+            previewWrapper.style.transition = 'transform 0.5s ease';
+            previewWrapper.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+            glareOverlay.style.opacity = '0';
+            setTimeout(() => previewWrapper.style.transition = '', 500);
+        });
+
+        function toggleFlip() {
+            flipAngle += 180;
+            const guard = document.getElementById('guardImageOverlay');
+            guard.style.transform = `translate(-50%, -50%) rotate(${flipAngle}deg)`;
+
+            const icon = document.querySelector('[onclick="toggleFlip()"] [data-lucide="refresh-cw"]');
+            if (icon) {
+                icon.classList.remove('spin-once');
+                void icon.offsetWidth;
+                icon.classList.add('spin-once');
+            }
+        }
+
+        function setCompany(company) {
+            currentCompany = company.toUpperCase();
+            
+            guardContainer.className = `w-[320px] md:w-[360px] flex items-center justify-center relative z-0`;
+            guardContainer.style.backgroundColor = ''; 
+            
+            [btnPsa, btnBgs, btnCgc].forEach(btn => {
+                btn.className = `company-btn py-2 px-3 rounded-lg text-sm font-bold transition-all text-center text-slate-500 hover:text-slate-700`;
+            });
+
+            if (company === 'psa') {
+                slabImageOverlay.style.display = 'block'; 
+                slabImageOverlay.classList.remove('hidden');
+                
+                if(currentSelectionName !== 'None') {
+                    guardImageOverlay.style.display = 'block';
+                    guardImageOverlay.classList.remove('hidden');
+                } else {
+                    guardImageOverlay.classList.add('hidden');
+                }
+                
+                slabCssOverlay.classList.add('hidden');
+                slabCssOverlay.classList.remove('flex');
+
+                const widthPercent = (PSA_CARD_WIDTH_PX / PSA_REF_WIDTH) * 100;
+                const bottomPercent = (PSA_CARD_BOTTOM_PX / PSA_REF_HEIGHT) * 100;
+                const leftPercent = (100 - widthPercent) / 2;
+
+                cardLayerEl.style.width = `${widthPercent}%`;
+                cardLayerEl.style.left = `${leftPercent}%`;
+                cardLayerEl.style.bottom = `${bottomPercent}%`;
+                cardLayerEl.style.top = 'auto'; 
+                cardLayerEl.style.aspectRatio = "63.5 / 88.9";
+                cardLayerEl.style.height = 'auto';
+                
+                userCardImage.style.width = '100%';
+                userCardImage.style.height = '100%';
+
+                btnPsa.className = `company-btn active-company py-2 px-3 rounded-lg text-sm font-bold transition-all text-center bg-white text-slate-900 shadow-sm ring-1 ring-slate-200`;
+                
+                renderGuardOptions('PSA');
+            } else {
+                guardContainer.classList.add('guard-bumper', `guard-${company}`, 'bg-gray-900');
+                slabContainer.classList.add(`company-${company}`, 'h-full');
+                slabImageOverlay.classList.add('hidden');
+                guardImageOverlay.classList.add('hidden');
+                slabCssOverlay.classList.remove('hidden');
+                slabCssOverlay.classList.add('flex');
+            }
+        }
+
+        // MODE SWITCHING LOGIC (IN MODAL)
+        window.setUploadModeInModal = function(mode) {
+            uploadMode = mode;
+            modalModeCardBtn.classList.toggle('active', mode === 'card');
+            modalModeSlabBtn.classList.toggle('active', mode === 'slab');
+            
+            // Re-initialize cropper with new aspect ratio logic
+            const imgEl = document.getElementById('imageToCrop');
+            if (imgEl && imgEl.src && imgEl.naturalWidth > 0) {
+                if(cropper) cropper.destroy();
+                let aspectRatio = (63.5 / 88.9);
+                if (uploadMode === 'slab') {
+                    // Use updated slab ratio 1200/2025
+                    aspectRatio = (1200 / 2025); 
+                }
+                cropper = new Cropper(imgEl, { 
+                    viewMode: 1, 
+                    background: false, 
+                    autoCropArea: 1, 
+                    zoomable: true, 
+                    aspectRatio: aspectRatio, 
+                    ready() {} 
+                });
+            }
+        }
+        
+        // Ensure global access if needed
+        window.setUploadMode = function(mode) {
+             setUploadModeInModal(mode);
+             
+             // Update visibility of label text immediately if image is already loaded
+             if (isImageLoaded) {
+                 if (uploadMode === 'slab') {
+                     if(guardLabelText) guardLabelText.style.display = 'none';
+                 } else {
+                     if (currentSelectionName !== 'None' && guardLabelText) {
+                         guardLabelText.style.display = 'block';
+                     }
+                 }
+             }
+        }
+
+        function setGuardOption(hex, name, imageUrl, btnId, highlightColor) {
+            document.getElementById('customColorInput').value = hex;
+            currentSelectionName = name; 
+            document.getElementById('colorNameDisplay').innerText = `Current: ${name}`;
+            
+            const guardImg = document.getElementById('guardImageOverlay');
+            guardImg.style.display = ''; 
+            
+            // Set text on slab label
+            if (guardLabelText) {
+                // UPDATED: Removed "GG: " prefix, just using the name
+                guardLabelText.innerText = name;
+                // Only show text in Card Mode. In Slab Mode, text is hidden.
+                if (uploadMode === 'slab') {
+                    guardLabelText.style.display = 'none';
+                } else {
+                    guardLabelText.style.display = 'block';
+                }
+            }
+            
+            if (imageUrl) {
+                guardImg.src = imageUrl;
+                if (btnPsa && btnPsa.classList.contains('active-company')) {
+                    guardImg.classList.remove('hidden');
+                }
+            }
+            
+            const guardContainer = document.getElementById('guardContainer');
+            if (guardContainer.classList.contains('guard-bumper')) {
+                guardContainer.style.backgroundColor = hex;
+            }
+
+            const buttons = document.querySelectorAll('.guard-option-btn');
+            buttons.forEach(btn => {
+                btn.classList.remove('ring-2'); 
+                btn.style.boxShadow = ''; 
+            });
+
+            const activeBtn = document.getElementById(btnId);
+            if (activeBtn) {
+                 activeBtn.classList.add('ring-2'); 
+                 const isDark = document.body.classList.contains('dark-mode');
+                 const offsetColor = isDark ? '#18181b' : '#f3f4f6'; 
+                 activeBtn.style.setProperty('--tw-ring-offset-color', offsetColor);
+            }
+        }
+
+        const fileInput = document.getElementById('fileInput');
+        const cropModal = document.getElementById('cropModal');
+        const imageToCrop = document.getElementById('imageToCrop');
+        let cropper = null;
+
+        // UPDATED: Restrict clicking if image is loaded
+        cardLayerEl.addEventListener('click', () => {
+             if (!isImageLoaded) {
+                 fileInput.click();
+             }
+        });
+        
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        const dnd = document.getElementById('cardLayer');
+        dnd.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drop-active'); });
+        dnd.addEventListener('dragleave', (e) => { e.preventDefault(); document.body.classList.remove('drop-active'); });
+        dnd.addEventListener('drop', (e) => { e.preventDefault(); document.body.classList.remove('drop-active'); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+        document.addEventListener('paste', (e) => {
+            const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'));
+            if (item) handleFile(item.getAsFile());
+        });
+
+        function handleFile(file) {
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imgEl = document.getElementById('imageToCrop');
+                    const modalEl = document.getElementById('cropModal');
+                    
+                    if(cropper) { cropper.destroy(); cropper = null; }
+                    
+                    if (imgEl) {
+                        // Reset image src first to avoid potential issues
+                        imgEl.src = '';
+                        imgEl.src = e.target.result;
+                        modalEl.classList.remove('hidden');
+                        modalEl.classList.add('flex');
+                        
+                        // Default back to Card mode on new upload
+                        setUploadModeInModal('card');
+                        
+                        // Use img.onload to ensure image dimensions are ready before initializing cropper
+                        imgEl.onload = () => {
+                            if(cropper) cropper.destroy(); // Safety check
+                            // Initial cropper (Card Mode default)
+                            cropper = new Cropper(imgEl, { 
+                                viewMode: 1, 
+                                background: false, 
+                                autoCropArea: 1, 
+                                zoomable: true, 
+                                aspectRatio: 63.5 / 88.9, 
+                                ready() {} 
+                            }); 
+                        };
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        window.closeModal = function() { cropModal.classList.add('hidden'); cropModal.classList.remove('flex'); if (cropper) { cropper.destroy(); cropper = null; } fileInput.value = ''; }
+        
+        window.applyCrop = function() {
+            if (cropper) {
+                // If Card Mode: Limit size to save resources. If Slab Mode: Need high res for background.
+                const maxWidth = uploadMode === 'slab' ? 1200 : 1024;
+                const maxHeight = uploadMode === 'slab' ? 2025 : 1024;
+                
+                const cvs = cropper.getCroppedCanvas({ maxWidth: maxWidth, maxHeight: maxHeight, fillColor: '#fff' });
+                
+                if(!cvs) return; // Prevent crash if canvas not generated
+
+                if (uploadMode === 'card') {
+                    // --- CARD MODE LOGIC (Round Corners) ---
+                    const rounded = document.createElement('canvas'); 
+                    rounded.width = cvs.width; 
+                    rounded.height = cvs.height; 
+                    const ctx = rounded.getContext('2d'); 
+                    const r = (cvs.width / 63.5) * 3;
+                    
+                    ctx.beginPath(); ctx.moveTo(r, 0); ctx.lineTo(rounded.width-r, 0); ctx.quadraticCurveTo(rounded.width, 0, rounded.width, r); ctx.lineTo(rounded.width, rounded.height-r); ctx.quadraticCurveTo(rounded.width, rounded.height, rounded.width-r, rounded.height); ctx.lineTo(r, rounded.height); ctx.quadraticCurveTo(0, rounded.height, 0, rounded.height-r); ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0); ctx.closePath(); ctx.clip(); 
+                    
+                    // FIXED: Removed incorrect 4th argument (0) which made image invisible
+                    ctx.drawImage(cvs, 0, 0);
+                    
+                    userCardImage.src = rounded.toDataURL('image/png'); 
+                    userCardImage.classList.remove('hidden'); 
+                    
+                    // Restore Base Slab (in case we were previously in slab mode)
+                    slabImageOverlay.src = PSA_BASE_IMG_URL;
+                    
+                    // Show Text if option selected
+                    if (currentSelectionName !== 'None' && guardLabelText) {
+                        guardLabelText.style.display = 'block';
+                    }
+
+                } else {
+                    // --- SLAB MODE LOGIC (Full Replacement) ---
+                    // Replace base image with cropped slab
+                    slabImageOverlay.src = cvs.toDataURL('image/png');
+                    // Hide inner card
+                    userCardImage.classList.add('hidden');
+                    // Hide label text as requested for Slab mode
+                    if (guardLabelText) guardLabelText.style.display = 'none';
+                }
+                
+                // Hide placeholder
+                cardPlaceholder.classList.add('hidden'); 
+                
+                // Disable clicking on the layer
+                cardLayerEl.classList.remove('cursor-pointer');
+                
+                // Mark image as loaded
+                isImageLoaded = true;
+                
+                // Update filters to apply to the correct element
+                updateFilters();
+
+                closeModal();
+            }
+        }
+        
+        window.clearImage = function() { 
+            // Reset Inner Card
+            userCardImage.src = ''; 
+            userCardImage.classList.add('hidden'); 
+            userCardImage.style.filter = 'none'; // Reset filter
+            
+            // Reset Slab to Base
+            slabImageOverlay.src = PSA_BASE_IMG_URL;
+            slabImageOverlay.style.filter = 'none'; // Reset filter
+            
+            // Show Placeholder
+            cardPlaceholder.classList.remove('hidden'); 
+            
+            // Show Text again (if option is selected)
+            if (currentSelectionName !== 'None') {
+                guardLabelText.style.display = 'block';
+            }
+            
+            // Reset state
+            isImageLoaded = false;
+            // Enable cursor pointer
+            cardLayerEl.classList.add('cursor-pointer');
+            
+            fileInput.value = ''; 
+        }
+        
+        async function buildCanvas() {
+            const OUTPUT_WIDTH = 609;
+            const SLAB_W = 568;
+            const SLAB_H = 958;
+
+            const guardImg = document.getElementById('guardImageOverlay');
+            const hasGuard = guardImg && !guardImg.classList.contains('hidden') && guardImg.naturalWidth > 0;
+
+            let OUTPUT_HEIGHT = 1000;
+            if (hasGuard) {
+                const guardW = SLAB_W * 1.0722;
+                const guardH = guardW * (guardImg.naturalHeight / guardImg.naturalWidth);
+                if (guardH > OUTPUT_HEIGHT) OUTPUT_HEIGHT = Math.ceil(guardH);
+            }
+
+            const slabX = (OUTPUT_WIDTH - SLAB_W) / 2;
+            const slabY = (OUTPUT_HEIGHT - SLAB_H) / 2;
+            const scaleX = SLAB_W / PSA_REF_WIDTH;
+            const scaleY = SLAB_H / PSA_REF_HEIGHT;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = OUTPUT_WIDTH;
+            canvas.height = OUTPUT_HEIGHT;
+            const ctx = canvas.getContext('2d');
+
+            const slabImg = document.getElementById('slabImageOverlay');
+            if (slabImg && slabImg.naturalWidth > 0) {
+                const slabFilter = slabImg.style.filter;
+                if (slabFilter && slabFilter !== 'none') {
+                    ctx.save(); ctx.filter = slabFilter;
+                    ctx.drawImage(slabImg, slabX, slabY, SLAB_W, SLAB_H);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(slabImg, slabX, slabY, SLAB_W, SLAB_H);
+                }
+            }
+
+            const cardImg = document.getElementById('userCardImage');
+            if (cardImg && !cardImg.classList.contains('hidden') && cardImg.naturalWidth > 0) {
+                const cardW = PSA_CARD_WIDTH_PX * scaleX;
+                const cardH = cardW * (cardImg.naturalHeight / cardImg.naturalWidth);
+                const cardX = slabX + ((PSA_REF_WIDTH - PSA_CARD_WIDTH_PX) / 2) * scaleX;
+                const cardY = slabY + SLAB_H - (PSA_CARD_BOTTOM_PX * scaleY) - cardH;
+                ctx.save();
+                ctx.filter = `brightness(${brightRange.value}%) contrast(${contrastRange.value}%) saturate(${satRange.value}%)`;
+                ctx.drawImage(cardImg, cardX, cardY, cardW, cardH);
+                ctx.restore();
+            }
+
+            if (hasGuard) {
+                const guardW = SLAB_W * 1.0722;
+                const guardH = guardW * (guardImg.naturalHeight / guardImg.naturalWidth);
+                ctx.drawImage(guardImg, (OUTPUT_WIDTH - guardW) / 2, (OUTPUT_HEIGHT - guardH) / 2, guardW, guardH);
+            }
+
+            if (currentSelectionName !== 'None' && (!guardLabelText || guardLabelText.style.display !== 'none')) {
+                const fontSize = SLAB_W * 0.035;
+                await document.fonts.ready;
+                ctx.font = `${fontSize}px "Univers 55", "Inter", sans-serif`;
+                ctx.fillStyle = '#242424';
+                ctx.textBaseline = 'top';
+                ctx.textAlign = 'left';
+                ctx.lineWidth = fontSize * 0.01;
+                ctx.strokeStyle = '#242424';
+                ctx.fillText(currentSelectionName.toUpperCase(), slabX + SLAB_W * 0.121, slabY + SLAB_H * 0.074);
+                ctx.strokeText(currentSelectionName.toUpperCase(), slabX + SLAB_W * 0.121, slabY + SLAB_H * 0.074);
+            }
+
+            return canvas;
+        }
+
+        window.downloadPreview = async function() {
+            try {
+                const canvas = await buildCanvas();
+                const safeName = currentSelectionName.replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-');
+                const link = document.createElement('a');
+                link.download = `${currentCompany}_${safeName}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch (err) {
+                console.error("Save failed:", err);
+                alert("Save failed. Check console for details.");
+            }
+        }
+
+        window.copyToClipboard = async function() {
+            try {
+                const canvas = await buildCanvas();
+                canvas.toBlob(async (blob) => {
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                }, 'image/png');
+            } catch (err) {
+                console.error("Copy failed:", err);
+                alert("Copy failed. Check console for details.");
+            }
+        }
+        
+        window.findByCert = async () => {
+            const cert = prompt("Please enter the PSA Certification Number:");
+            if (!cert || !cert.trim()) return;
+            const certNum = cert.trim();
+
+            const btn = document.querySelector('[onclick="findByCert()"]');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+
+            try {
+                const res = await fetch(`https://psa-proxy.mew-860.workers.dev/?cert=${encodeURIComponent(certNum)}`);
+                if (res.ok) {
+                    const blob = await res.blob();
+                    handleFile(new File([blob], `psa-${certNum}.jpg`, { type: blob.type }));
+                } else {
+                    window.open(`https://www.psacard.com/cert/${certNum}`, '_blank');
+                }
+            } catch (err) {
+                console.error('PSA lookup failed:', err);
+                window.open(`https://www.psacard.com/cert/${certNum}`, '_blank');
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            }
+        };
+
+        // --- FILTER LOGIC ---
+        function updateFilters() {
+            const b = brightRange.value;
+            const c = contrastRange.value;
+            const s = satRange.value;
+            const filterVal = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
+            
+            if (uploadMode === 'card') {
+                 // Card Mode: Filter inner card, reset slab
+                if(userCardImage) userCardImage.style.filter = filterVal;
+                if(slabImageOverlay) slabImageOverlay.style.filter = 'none';
+            } else {
+                // Slab Mode: Filter slab background
+                if(slabImageOverlay) slabImageOverlay.style.filter = filterVal;
+                // Ensure card doesn't have residual filters
+                if(userCardImage) userCardImage.style.filter = 'none';
+            }
+        }
+
+        [brightRange, contrastRange, satRange].forEach(el => el.addEventListener('input', updateFilters));
+
+        window.resetFilters = () => {
+            brightRange.value = 100;
+            contrastRange.value = 100;
+            satRange.value = 100;
+            updateFilters();
+        }
+    </script>
+</body>
+</html>
