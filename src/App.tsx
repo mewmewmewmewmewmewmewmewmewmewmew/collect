@@ -207,11 +207,19 @@ const TiltCardButton: React.FC<{ ariaLabel: string; onClick: () => void; childre
 };
 
 const BackgroundGradient: React.FC = () => (
-  <div
-    aria-hidden="true"
-    className="pointer-events-none fixed inset-0 z-0"
-    style={{ background: `linear-gradient(to top left, rgb(var(--accent-rgb) / 0.15), transparent 40%)` }}
-  />
+  <>
+    {/* Dot-grid texture (lights up in light mode via CSS) */}
+    <div aria-hidden="true" className="bg-texture pointer-events-none fixed inset-0 z-0" />
+    {/* Dual-corner accent wash */}
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 z-0"
+      style={{
+        background: `linear-gradient(135deg, rgb(var(--accent-rgb) / 0.18), transparent 55%),
+                     linear-gradient(315deg, rgb(var(--accent-rgb) / 0.08), transparent 45%)`
+      }}
+    />
+  </>
 );
 
 // ------------------------------
@@ -314,7 +322,7 @@ export default function PokeCardGallery() {
   return (
     <div className="relative min-h-screen bg-page font-sans text-fg">
       <BackgroundGradient />
-      <header className="sticky top-0 z-40 border-b border-line/60 bg-black/30 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-line/60 bg-surface/80 backdrop-blur">
         <div className="mx-auto max-w-7xl px-3 py-2">
           <div className="flex w-full flex-row flex-wrap items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -340,7 +348,7 @@ export default function PokeCardGallery() {
                   {releaseSortDesc ? "Date ▼" : "Date ▲"}
                 </button>
                 <div className="relative w-36 sm:w-60">
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 pr-8 text-[13px] text-fg placeholder:text-fg-muted shadow-sm outline-none focus:ring-2 focus:ring-accent" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-line/60 bg-surface-2/80 backdrop-blur-sm px-3 pr-8 text-[13px] text-fg placeholder:text-fg-muted shadow-sm outline-none focus:ring-2 focus:ring-accent" />
                   {q && (
                     <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-500 hover:text-fg hover:bg-surface-2" aria-label="Clear search">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -363,7 +371,7 @@ export default function PokeCardGallery() {
             {filtered.map((card) => (
               <li key={card.id}>
                 <TiltCardButton onClick={() => { setSelected(card); trackEvent('card_click', { card_name: card.name, card_set: card.set, card_number: card.number }); }} ariaLabel={`Open details for ${card.name} ${card.set || ''} ${card.number || ''}`}>
-                  <div className="relative aspect-[63/88] w-full overflow-hidden bg-card" style={{ borderRadius: "5.2% / 3.9%" }}>
+                  <div className="card-shadow relative aspect-[63/88] w-full overflow-hidden bg-card" style={{ borderRadius: "5.2% / 3.9%" }}>
                     <img
                       src={card.image || IMG_FALLBACK}
                       alt={card.name}
@@ -400,7 +408,7 @@ export default function PokeCardGallery() {
           type="button"
           onClick={() => { setShowEdit(true); trackEvent('edit_modal_open'); }}
           aria-label="Edit cards"
-          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
+          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-surface/80 sm:bg-transparent border border-line/40 sm:border-transparent focus:outline-none"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 opacity-50 hover:opacity-100 transition-opacity duration-150" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 20h9" />
@@ -411,7 +419,7 @@ export default function PokeCardGallery() {
           type="button"
           onClick={() => { setShowSettings(true); trackEvent('settings_modal_open'); }}
           aria-label="Settings"
-          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
+          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-surface/80 sm:bg-transparent border border-line/40 sm:border-transparent focus:outline-none"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 opacity-50 hover:opacity-100 transition-opacity duration-150" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
@@ -443,7 +451,7 @@ export default function PokeCardGallery() {
 // Reusable bits
 // ------------------------------
 const InfoPill: React.FC<{ label: string }> = ({ label }) => (
-  <span className="rounded bg-zinc-800/60 px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted backdrop-blur-sm">
+  <span className="rounded border border-line bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted">
     {label}
   </span>
 );

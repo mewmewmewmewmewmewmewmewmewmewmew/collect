@@ -15,11 +15,26 @@
 }
 
 [data-mode="light"] {
-  --page-rgb: 250 250 250;
+  --page-rgb: 248 247 245;
   --surface-rgb: 255 255 255;
-  --surface-2-rgb: 245 245 245;
+  --surface-2-rgb: 242 241 239;
   --card-rgb: 255 255 255;
-  --line-rgb: 229 231 235;
+  --line-rgb: 218 216 212;
   --fg-rgb: 24 24 27;
   --fg-muted-rgb: 82 82 91;
+}
+
+/* Light mode: subtle warm dot-grid texture */
+[data-mode="light"] .bg-texture {
+  background-image: radial-gradient(circle, rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Light mode: card lift shadow */
+[data-mode="light"] .card-shadow {
+  box-shadow: 0 2px 10px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.07);
+  transition: box-shadow 150ms ease;
+}
+[data-mode="light"] .card-shadow:hover {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.13), 0 2px 6px rgba(0,0,0,0.08);
 }
