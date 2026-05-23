@@ -174,16 +174,11 @@ export default function PokeCardGallery() {
 
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Card | null>(null);
-  const [showStats, setShowStats] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<"psa10" | "psa19" | "need" | "all">("all");
-  const [isMobile, setIsMobile] = useState(false);
-  const [statsSelected, setStatsSelected] = useState<Card | null>(null);
   const [mew, setMew] = useState(true);
   const [cameo, setCameo] = useState(false);
   const [intl, setIntl] = useState(false);
   const [releaseSortDesc, setReleaseSortDesc] = useState(false);
-  const [desaturateNeed, setDesaturateNeed] = useState(false);
 
   const [swirlEpoch] = useState(() => Date.now());
   const swirlDelay = useMemo(() => -((Date.now() - swirlEpoch) % 5000) / 1000, [swirlEpoch]);
@@ -195,20 +190,6 @@ export default function PokeCardGallery() {
     const t = setTimeout(() => trackEvent('search', { search_term: q.trim() }), 800);
     return () => clearTimeout(t);
   }, [q]);
-
-  useEffect(() => {
-    if (!showStats) return;
-    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") setShowStats(false); };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [showStats]);
-
-  useEffect(() => {
-    const updateIsMobile = () => setIsMobile(window.matchMedia("(max-width: 639px)").matches);
-    updateIsMobile();
-    window.addEventListener("resize", updateIsMobile);
-    return () => window.removeEventListener("resize", updateIsMobile);
-  }, []);
 
   const fetchCards = async () => {
     const { data, error } = await supabase.from('cards').select('*');
@@ -252,32 +233,6 @@ export default function PokeCardGallery() {
     () => applyFilters(cards, { q, mew, cameo, intl, sortDesc: releaseSortDesc }),
     [q, mew, cameo, intl, cards, releaseSortDesc]
   );
-
-  const ownedStats = useMemo(() => {
-    const total = cards.filter((c) => c.pc !== "N/A").length;
-    const psa10Cards = cards.filter((c) => c.pc === "PSA10");
-    const psa10 = psa10Cards.length;
-    const lowerGrades = Array.from({ length: 9 }, (_, i) => `PSA${i + 1}`);
-    const psa19Cards = cards.filter((c) => lowerGrades.includes(c.pc || ""));
-    const needCards = cards.filter((c) => c.pc !== "PSA10" && c.pc !== "N/A");
-    return { total, psa10, psa10Cards, psa19Cards, needCards, allCards: cards };
-  }, [cards]);
-
-  const activeStatsCards = useMemo(() => {
-    switch (detailsTab) {
-      case "psa10": return ownedStats.psa10Cards;
-      case "psa19": return ownedStats.psa19Cards;
-      case "need": return ownedStats.needCards;
-      default: return ownedStats.allCards;
-    }
-  }, [detailsTab, ownedStats]);
-
-  useEffect(() => {
-    if (activeStatsCards.length === 0) { setStatsSelected(null); return; }
-    if (!statsSelected || !activeStatsCards.some((c) => c.id === statsSelected.id)) {
-      setStatsSelected(activeStatsCards[0]);
-    }
-  }, [activeStatsCards, statsSelected]);
 
   if (dataStatus === 'loading' || !imagesLoaded) {
     return <LoadingScreen progress={loadingProgress} swirlDelay={swirlDelay} />;
@@ -339,10 +294,7 @@ export default function PokeCardGallery() {
                     <img
                       src={card.image || IMG_FALLBACK}
                       alt={card.name}
-                      className={classNames(
-                        "h-full w-full object-fill transition-[filter] duration-200",
-                        desaturateNeed && card.pc !== "PSA10" && (card.pc === "N/A" ? "grayscale opacity-25" : "grayscale")
-                      )}
+                      className="h-full w-full object-fill"
                       style={{ aspectRatio: "63/88" }}
                       onError={handleImgError}
                       referrerPolicy="strict-origin-when-cross-origin"
@@ -382,57 +334,8 @@ export default function PokeCardGallery() {
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
         </button>
-        <button
-          type="button"
-          onClick={() => setDesaturateNeed((v) => !v)}
-          aria-label="Toggle need list desaturation"
-          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            className={classNames(
-              "h-4 w-4 transition-opacity duration-150 hover:opacity-100",
-              desaturateNeed ? "text-white opacity-100" : "opacity-50 grayscale"
-            )}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="5" y="3" width="14" height="18" rx="2" />
-            <line x1="8" y1="8" x2="16" y2="8" />
-            <line x1="8" y1="12" x2="16" y2="12" />
-            <line x1="8" y1="16" x2="13" y2="16" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={() => { setShowStats(true); trackEvent('stats_modal_open'); }}
-          aria-label="Open owned card stats"
-          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
-        >
-          <img
-            src="https://mew.cards/img/logo.png"
-            alt="Owned stats"
-            className="h-4 w-4 opacity-50 grayscale transition-opacity duration-150 hover:opacity-100"
-          />
-        </button>
       </div>
 
-      {showStats && (
-        <StatsModal
-          onClose={() => setShowStats(false)}
-          stats={ownedStats}
-          onSelectCard={(card) => setStatsSelected(card)}
-          selectedCard={statsSelected}
-          onOpenCard={(card) => { setSelected(card); setShowStats(false); }}
-          isMobile={isMobile}
-          detailsTab={detailsTab}
-          setDetailsTab={setDetailsTab}
-        />
-      )}
       {selected && <DetailModal card={selected} onClose={() => setSelected(null)} />}
       {showEdit && (
         <EditSheet
@@ -818,256 +721,6 @@ const EditRow: React.FC<{
     </tr>
   );
 };
-
-// ------------------------------
-// Stats Modal
-// ------------------------------
-const StatsModal: React.FC<{
-  onClose: () => void;
-  stats: {
-    total: number;
-    psa10: number;
-    psa10Cards: Card[];
-    psa19Cards: Card[];
-    needCards: Card[];
-    allCards: Card[];
-  };
-  onSelectCard: (card: Card) => void;
-  selectedCard: Card | null;
-  onOpenCard: (card: Card) => void;
-  isMobile: boolean;
-  detailsTab: "psa10" | "psa19" | "need" | "all";
-  setDetailsTab: React.Dispatch<React.SetStateAction<"psa10" | "psa19" | "need" | "all">>;
-}> = ({ onClose, stats, onSelectCard, selectedCard, onOpenCard, isMobile, detailsTab, setDetailsTab }) => {
-  const [statsView, setStatsView] = useState<"list" | "grid">("list");
-  const gridCards = (() => {
-    const base = detailsTab === "psa10" ? stats.psa10Cards
-      : detailsTab === "psa19" ? stats.psa19Cards
-      : detailsTab === "need" ? stats.needCards
-      : stats.allCards;
-    return [...base].sort((a, b) => {
-      if (detailsTab === "all") return releaseTs(a) - releaseTs(b);
-      if ((a.year || 0) !== (b.year || 0)) return (a.year || 0) - (b.year || 0);
-      const nc = (a.number || "").localeCompare(b.number || "", undefined, { numeric: true, sensitivity: "base" });
-      if (nc !== 0) return nc;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    });
-  })();
-
-  return (
-    <div className="fixed inset-0 z-[900] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
-      <div className="relative w-full max-w-3xl h-[100dvh] overflow-hidden rounded-none sm:rounded-3xl border border-[#2a2a2a] bg-[#161616] shadow-2xl sm:h-[80vh]" onClick={(e) => e.stopPropagation()}>
-        <div className="stats-scroll flex h-full max-h-[100dvh] flex-col overflow-y-auto px-5 pb-6 pt-2 sm:h-full sm:max-h-none sm:overflow-hidden sm:px-6 sm:pt-6">
-          <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-[11px] text-gray-100">PSA10 {stats.total ? `${stats.psa10}/${stats.total}` : "0/0"}</div>
-            </div>
-            <div
-              className="mt-2 h-2 w-full overflow-hidden rounded-full progress-hatch"
-              style={{
-                backgroundColor: "#262626",
-                backgroundImage: "repeating-linear-gradient(135deg, rgba(244,114,182,0.28) 0 2px, rgba(0,0,0,0) 2px 6px)",
-              }}
-            >
-              <div
-                className="h-full bg-emerald-300 transition-all"
-                style={{ width: `${stats.total ? Math.round((stats.psa10 / stats.total) * 100) : 0}%` }}
-              />
-            </div>
-            <div className="mt-2 text-[11px] text-gray-400">
-              Total cards: {stats.total} · PSA10 progress: {stats.total ? `${stats.psa10}/${stats.total}` : "0/0"}
-            </div>
-            {stats.total === 0 && (
-              <div className="mt-3 text-xs text-gray-500">No cards loaded yet.</div>
-            )}
-          </div>
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 rounded-full border border-[#2a2a2a] bg-[#141414] p-1">
-              {(["all", "need", "psa19", "psa10"] as const).map(tab => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setDetailsTab(tab)}
-                  className={classNames(
-                    "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-                    detailsTab === tab ? "bg-[#cb97a5]/20 text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-                  )}
-                >
-                  {tab === "psa19" ? "PSA1-9" : tab === "psa10" ? "PSA10" : tab === "need" ? "Need" : "All"}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setStatsView(v => { const next = v === "grid" ? "list" : "grid"; trackEvent('stats_view_toggle', { view: next }); return next; })}
-              className={classNames(
-                "flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[#2a2a2a] bg-[#141414] text-xs transition-colors",
-                statsView === "grid" ? "text-[#cb97a5]" : "text-gray-400 hover:text-gray-200"
-              )}
-              aria-label="Toggle grid view"
-            >
-              <i className="fa-solid fa-border-all" />
-            </button>
-          </div>
-          {statsView === "grid" ? (
-            <div className="stats-scroll mt-4 grid grid-cols-3 gap-3 overflow-y-auto rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4 sm:flex-1 sm:min-h-0 sm:grid-cols-4">
-              {gridCards.map((card) => (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => onOpenCard(card)}
-                  className="flex flex-col items-center gap-1 rounded-lg p-1 text-center transition-colors hover:bg-[#1f1f1f]"
-                >
-                  <div className="w-full overflow-hidden rounded-[4.2%] border border-[#2a2a2a] bg-[#0f0f0f]">
-                    <img
-                      src={card.image || IMG_FALLBACK}
-                      alt={card.name}
-                      className="aspect-[63/88] w-full object-contain"
-                    />
-                  </div>
-                  <span className="w-full truncate text-[9px] leading-tight text-gray-300">{card.name}</span>
-                  <span className="text-[9px] text-[#cb97a5]/80">{card.number || "—"}{card.edition ? ` · ${card.edition}` : ""}</span>
-                </button>
-              ))}
-              {gridCards.length === 0 && (
-                <div className="col-span-full text-[11px] text-gray-500">None</div>
-              )}
-            </div>
-          ) : (
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:flex-1 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] sm:overflow-hidden">
-              <div className="stats-scroll stats-scroll-edge rounded-l-2xl rounded-r-none border border-[#2a2a2a] bg-[#141414] overflow-hidden pr-1 sm:min-h-0 sm:overflow-y-auto">
-                <div className="space-y-4">
-                  <StatsList
-                    cards={detailsTab === "psa10" ? stats.psa10Cards
-                      : detailsTab === "psa19" ? stats.psa19Cards
-                      : detailsTab === "need" ? stats.needCards
-                      : stats.allCards}
-                    onSelectCard={isMobile ? onOpenCard : onSelectCard}
-                    selectedId={selectedCard?.id || null}
-                    sortMode={detailsTab === "all" ? "release" : "default"}
-                    containerClassName="rounded-none border-0 bg-transparent p-4"
-                  />
-                </div>
-              </div>
-              <div className="hidden sm:flex sm:min-h-0 sm:flex-col">
-                <StatsPreview card={selectedCard} onOpenCard={onOpenCard} />
-              </div>
-            </div>
-          )}
-          <button
-            onClick={onClose}
-            className="mt-3 w-full rounded-lg border border-[#cb97a5]/40 bg-[#cb97a5]/20 py-2 text-xs font-semibold text-[#f6d7df] sm:hidden"
-          >
-            Back to list
-          </button>
-        </div>
-        <style>{`
-          .stats-scroll { scrollbar-width: thin; scrollbar-color: rgba(203, 151, 165, 0.45) rgba(20, 20, 20, 0.9); }
-          .stats-scroll-edge { padding-right: 10px; margin-right: -10px; }
-          .stats-scroll::-webkit-scrollbar { width: 8px; }
-          .stats-scroll::-webkit-scrollbar-track { background: rgba(20, 20, 20, 0.9); }
-          .stats-scroll::-webkit-scrollbar-thumb { background: rgba(203, 151, 165, 0.45); border-radius: 999px; border: 2px solid rgba(20, 20, 20, 0.9); }
-          .stats-scroll::-webkit-scrollbar-thumb:hover { background: rgba(203, 151, 165, 0.7); }
-          .progress-hatch { background-size: 16px 16px; animation: hatchMove 1.5s linear infinite; }
-          @keyframes hatchMove { from { background-position: 0 0; } to { background-position: 16px 0; } }
-        `}</style>
-      </div>
-    </div>
-  );
-};
-
-const StatsList: React.FC<{
-  cards: Card[];
-  onSelectCard: (card: Card) => void;
-  selectedId: string | null;
-  sortMode?: "default" | "release";
-  containerClassName?: string;
-}> = ({ cards, onSelectCard, selectedId, sortMode = "default", containerClassName }) => (
-  <div className={classNames("rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4", containerClassName)}>
-    {cards.length === 0 ? (
-      <div className="text-[11px] text-gray-500">None</div>
-    ) : (
-      <ul className="space-y-1">
-        {[...cards]
-          .sort((a, b) => {
-            if (sortMode === "release") return releaseTs(a) - releaseTs(b);
-            const yearA = a.year || 0;
-            const yearB = b.year || 0;
-            if (yearA !== yearB) return yearA - yearB;
-            const numCmp = (a.number || "").localeCompare(b.number || "", undefined, { numeric: true, sensitivity: "base" });
-            if (numCmp !== 0) return numCmp;
-            return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-          })
-          .map((card) => (
-            <li key={card.id}>
-              <button
-                type="button"
-                onClick={() => onSelectCard(card)}
-                className={classNames(
-                  "grid w-full grid-cols-[40px_36px_52px_1fr] items-center gap-2 rounded-md px-1 py-1 text-left text-[10px] transition-colors sm:grid-cols-[52px_44px_64px_1fr] sm:text-[11px]",
-                  selectedId === card.id
-                    ? "bg-[#1f1f1f] text-gray-100"
-                    : "text-gray-300 hover:bg-[#1b1b1b] hover:text-gray-100"
-                )}
-              >
-                <span className={classNames(
-                  "text-[10px] font-semibold",
-                  card.pc === "PSA10" ? "text-emerald-300" : card.pc ? "text-rose-300" : "text-gray-500"
-                )}>
-                  {card.pc || ""}
-                </span>
-                <span className="text-gray-500">{card.year || "—"}</span>
-                <span className="text-gray-500">{card.number || "—"}</span>
-                <span className="text-gray-100">{card.name}</span>
-              </button>
-            </li>
-          ))}
-      </ul>
-    )}
-  </div>
-);
-
-const StatsPreview: React.FC<{ card: Card | null; onOpenCard: (card: Card) => void }> = ({ card, onOpenCard }) => (
-  <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-r-2xl rounded-l-none border border-[#2a2a2a] bg-[#141414] p-4">
-    {!card ? (
-      <div className="text-[11px] text-gray-500">Select a card to preview.</div>
-    ) : (
-      <div className="stats-scroll stats-scroll-edge flex-1 min-h-0 overflow-y-auto pr-2 space-y-3">
-        <button
-          type="button"
-          onClick={() => onOpenCard(card)}
-          className="relative w-full overflow-hidden border border-[#2a2a2a] bg-[#0f0f0f]"
-          style={{ borderRadius: "5.2% / 3.9%" }}
-          aria-label={`Open details for ${card.name}`}
-        >
-          <img
-            src={card.image || IMG_FALLBACK}
-            alt={`${card.name} preview`}
-            className="w-full h-auto object-contain"
-            style={{ aspectRatio: "63 / 88", borderRadius: "5.2% / 3.9%" }}
-            onError={handleImgError}
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-        </button>
-        <div className="text-sm font-semibold text-gray-100 truncate">{card.name}</div>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-gray-300">
-          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Number</span><span className="text-gray-100">{card.number || "—"}</span></div>
-          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Year</span><span className="text-gray-100">{card.year ? String(card.year) : "—"}</span></div>
-          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Release</span><span className="text-gray-100">{formatDate(card.release) || "—"}</span></div>
-          {card.rarity && (<div className="flex flex-col gap-0.5"><span className="text-gray-500">Rarity</span><span className="text-gray-100">{card.rarity}</span></div>)}
-          <div className="flex flex-col gap-0.5"><span className="text-gray-500">Era</span><span className="text-gray-100">{card.era || "—"}</span></div>
-          {card.edition && (<div className="flex flex-col gap-0.5"><span className="text-gray-500">Edition</span><span className="text-gray-100">{card.edition}</span></div>)}
-        </div>
-        {card.notes && (
-          <div className="text-[11px] text-gray-300">
-            <div className="text-gray-500">Notes</div>
-            <div className="mt-1 text-gray-100 leading-snug">{card.notes}</div>
-          </div>
-        )}
-      </div>
-    )}
-  </div>
-);
 
 // ------------------------------
 // Loading Screen
