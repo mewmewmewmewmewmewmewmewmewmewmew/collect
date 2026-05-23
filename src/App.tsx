@@ -19,23 +19,36 @@ const APP_VERSION = "22.0";
 // ------------------------------
 export type Edition = '1st' | 'Unlim' | 'Error';
 
+export type Mode = 'dark' | 'light';
+
 export type Settings = {
   id: number;
   title: string;
   tagline: string;
   accent: string;
+  mode: Mode;
+  icon_url: string | null;
 };
 
-export const THEMES: Array<{ name: string; accent: string }> = [
-  { name: "Mew",      accent: "#cb97a5" },
-  { name: "Sky",      accent: "#7dd3fc" },
-  { name: "Mint",     accent: "#86efac" },
-  { name: "Lavender", accent: "#c084fc" },
-  { name: "Sunset",   accent: "#fbbf24" },
-  { name: "Coral",    accent: "#fb7185" },
+export const THEMES: Array<{ name: string; dark: string; light: string }> = [
+  { name: "Mew",      dark: "#cb97a5", light: "#a35d70" },
+  { name: "Sky",      dark: "#7dd3fc", light: "#0284c7" },
+  { name: "Mint",     dark: "#86efac", light: "#16a34a" },
+  { name: "Lavender", dark: "#c084fc", light: "#9333ea" },
+  { name: "Sunset",   dark: "#fbbf24", light: "#d97706" },
+  { name: "Coral",    dark: "#fb7185", light: "#e11d48" },
 ];
 
-const DEFAULT_SETTINGS: Settings = { id: 1, title: "Collect", tagline: "Card Gallery", accent: "#cb97a5" };
+const DEFAULT_ICON = "https://mew.cards/img/logo.png";
+
+const DEFAULT_SETTINGS: Settings = {
+  id: 1,
+  title: "Collect",
+  tagline: "Card Gallery",
+  accent: THEMES[0].dark,
+  mode: 'dark',
+  icon_url: null,
+};
 
 function hexToRgb(hex: string): string {
   const m = hex.replace('#', '').match(/.{2}/g);
@@ -46,6 +59,15 @@ function hexToRgb(hex: string): string {
 function applyAccent(hex: string) {
   document.documentElement.style.setProperty('--accent', hex);
   document.documentElement.style.setProperty('--accent-rgb', hexToRgb(hex));
+}
+
+function applyMode(mode: Mode) {
+  document.documentElement.setAttribute('data-mode', mode);
+}
+
+function findThemeByAccent(accent: string): { name: string; dark: string; light: string } | undefined {
+  const a = accent.toLowerCase();
+  return THEMES.find(t => t.dark.toLowerCase() === a || t.light.toLowerCase() === a);
 }
 
 export type Card = {
@@ -175,7 +197,7 @@ const TiltCardButton: React.FC<{ ariaLabel: string; onClick: () => void; childre
       onMouseMove={onMove}
       onMouseLeave={reset}
       onMouseEnter={() => { const el = ref.current; if (el) el.style.willChange = 'transform'; }}
-      className="group relative block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101010] focus-visible:ring-accent rounded-[4.2%]"
+      className="group relative block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-page focus-visible:ring-accent rounded-[4.2%]"
       style={{ transformStyle: 'preserve-3d' } as React.CSSProperties}
     >
       {children}
@@ -216,6 +238,7 @@ export default function PokeCardGallery() {
 
   useEffect(() => { document.title = settings.title; }, [settings.title]);
   useEffect(() => { applyAccent(settings.accent); }, [settings.accent]);
+  useEffect(() => { applyMode(settings.mode); }, [settings.mode]);
 
   useEffect(() => {
     (async () => {
@@ -226,6 +249,8 @@ export default function PokeCardGallery() {
           title: data.title ?? DEFAULT_SETTINGS.title,
           tagline: data.tagline ?? DEFAULT_SETTINGS.tagline,
           accent: data.accent ?? DEFAULT_SETTINGS.accent,
+          mode: (data.mode === 'light' ? 'light' : 'dark') as Mode,
+          icon_url: data.icon_url ?? null,
         });
       } else if (error) {
         console.warn("Settings fetch failed (using defaults):", error.message);
@@ -283,20 +308,20 @@ export default function PokeCardGallery() {
   );
 
   if (dataStatus === 'loading' || !imagesLoaded) {
-    return <LoadingScreen progress={loadingProgress} swirlDelay={swirlDelay} />;
+    return <LoadingScreen progress={loadingProgress} swirlDelay={swirlDelay} iconUrl={settings.icon_url || DEFAULT_ICON} />;
   }
 
   return (
-    <div className="relative min-h-screen bg-[#101010] font-sans text-gray-100">
+    <div className="relative min-h-screen bg-page font-sans text-fg">
       <BackgroundGradient />
-      <header className="sticky top-0 z-40 border-b border-[#2a2a2a]/60 bg-black/30 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-line/60 bg-black/30 backdrop-blur">
         <div className="mx-auto max-w-7xl px-3 py-2">
           <div className="flex w-full flex-row flex-wrap items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <img src="https://mew.cards/img/logo.png" alt="Logo" className="h-8 w-8" />
+              <img src={settings.icon_url || DEFAULT_ICON} alt="Logo" className="h-8 w-8" onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_ICON; }} />
               <div>
                 <h1 className="text-base sm:text-lg font-semibold tracking-tight">{settings.title}</h1>
-                <div className="-mt-0.5 text-[11px] text-gray-400">{settings.tagline}</div>
+                <div className="-mt-0.5 text-[11px] text-fg-muted">{settings.tagline}</div>
               </div>
             </div>
             <div className="flex w-full flex-row flex-wrap items-center gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
@@ -310,14 +335,14 @@ export default function PokeCardGallery() {
                   type="button"
                   onClick={() => setReleaseSortDesc(v => !v)}
                   aria-label={releaseSortDesc ? "Sort by date: new to old" : "Sort by date: old to new"}
-                  className="hidden sm:inline-flex text-[12px] text-gray-400 hover:text-gray-200 px-1 py-0.5 rounded outline-none focus:outline-none"
+                  className="hidden sm:inline-flex text-[12px] text-fg-muted hover:text-fg px-1 py-0.5 rounded outline-none focus:outline-none"
                 >
                   {releaseSortDesc ? "Date ▼" : "Date ▲"}
                 </button>
                 <div className="relative w-36 sm:w-60">
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 pr-8 text-[13px] text-gray-200 placeholder:text-gray-400 shadow-sm outline-none focus:ring-2 focus:ring-accent" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 pr-8 text-[13px] text-fg placeholder:text-fg-muted shadow-sm outline-none focus:ring-2 focus:ring-accent" />
                   {q && (
-                    <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-500 hover:text-gray-200 hover:bg-[#2f2f2f]" aria-label="Clear search">
+                    <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-500 hover:text-fg hover:bg-surface-2" aria-label="Clear search">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                   )}
@@ -338,7 +363,7 @@ export default function PokeCardGallery() {
             {filtered.map((card) => (
               <li key={card.id}>
                 <TiltCardButton onClick={() => { setSelected(card); trackEvent('card_click', { card_name: card.name, card_set: card.set, card_number: card.number }); }} ariaLabel={`Open details for ${card.name} ${card.set || ''} ${card.number || ''}`}>
-                  <div className="relative aspect-[63/88] w-full overflow-hidden bg-[#0f0f0f]" style={{ borderRadius: "5.2% / 3.9%" }}>
+                  <div className="relative aspect-[63/88] w-full overflow-hidden bg-card" style={{ borderRadius: "5.2% / 3.9%" }}>
                     <img
                       src={card.image || IMG_FALLBACK}
                       alt={card.name}
@@ -418,7 +443,7 @@ export default function PokeCardGallery() {
 // Reusable bits
 // ------------------------------
 const InfoPill: React.FC<{ label: string }> = ({ label }) => (
-  <span className="rounded bg-zinc-800/60 px-1.5 py-0.5 text-[10px] font-semibold text-gray-300 backdrop-blur-sm">
+  <span className="rounded bg-zinc-800/60 px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted backdrop-blur-sm">
     {label}
   </span>
 );
@@ -428,25 +453,25 @@ const Toggle: React.FC<{ label: string; active: boolean; onClick: () => void }> 
     onClick={onClick}
     className={classNames(
       "rounded-full border px-2 py-0.5 text-[11px] font-medium shadow-sm focus:outline-none focus:ring-1 transition-colors",
-      active ? "border-accent bg-accent/15 text-accent ring-accent" : "border-gray-500 bg-transparent text-gray-300 hover:bg-accent/10 ring-transparent"
+      active ? "border-accent bg-accent/15 text-accent ring-accent" : "border-gray-500 bg-transparent text-fg-muted hover:bg-accent/10 ring-transparent"
     )}
     aria-pressed={active}
   >{label}</button>
 );
 
 const Tag: React.FC<{ label: string }> = ({ label }) => (
-  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium text-gray-200 border-[#2a2a2a] bg-[#151515]">{label}</span>
+  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium text-fg border-line bg-surface">{label}</span>
 );
 
 const InfoBubble: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
-  <div className="rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2">
-    <div className="text-[10px] uppercase tracking-wide text-gray-400 leading-tight">{label}</div>
-    <div className="text-sm text-gray-200 leading-snug">{value || "—"}</div>
+  <div className="rounded-xl border border-line bg-surface px-3 py-2">
+    <div className="text-[10px] uppercase tracking-wide text-fg-muted leading-tight">{label}</div>
+    <div className="text-sm text-fg leading-snug">{value || "—"}</div>
   </div>
 );
 
 const EmptyFiltered: React.FC = () => (
-  <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[#2a2a2a] bg-[#121212] px-6 py-16 text-center text-gray-400">
+  <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-line bg-card px-6 py-16 text-center text-fg-muted">
     <div className="text-4xl">🔍</div>
     <div className="text-sm">No cards match your filters.</div>
   </div>
@@ -508,7 +533,7 @@ const EmptyDatabase: React.FC<{ onSeeded: () => void }> = ({ onSeeded }) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-[#2a2a2a] bg-[#121212] px-6 py-16 text-center text-gray-400">
+    <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-line bg-card px-6 py-16 text-center text-fg-muted">
       <div className="text-4xl">📭</div>
       <div className="text-sm">No cards yet. Click the pencil icon (bottom-left) to start editing, or add some samples to get going.</div>
       <button
@@ -595,22 +620,22 @@ const EditSheet: React.FC<{
       onClick={onClose}
     >
       <div
-        className="flex h-[95vh] w-[95vw] flex-col overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#141414] shadow-2xl ring-1 ring-white/5"
+        className="flex h-[95vh] w-[95vw] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl ring-1 ring-line"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5">
+        <div className="flex items-center justify-between border-b border-line bg-surface px-4 py-2.5">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 pr-2">
               <span className="h-3 w-3 rounded-full bg-rose-400/80" />
               <span className="h-3 w-3 rounded-full bg-amber-400/80" />
               <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
             </div>
-            <h2 className="text-sm font-semibold text-gray-100">Edit cards</h2>
+            <h2 className="text-sm font-semibold text-fg">Edit cards</h2>
             <span className="text-[11px] text-gray-500">{cards.length} {cards.length === 1 ? 'card' : 'cards'}</span>
             <span className={classNames(
               "text-[11px] transition-opacity",
               statusText ? "opacity-100" : "opacity-0",
-              saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-gray-400"
+              saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-fg-muted"
             )}>{statusText || '—'}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -623,7 +648,7 @@ const EditSheet: React.FC<{
             </button>
             <button
               onClick={onClose}
-              className="rounded-md p-1.5 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none"
+              className="rounded-md p-1.5 text-fg-muted hover:bg-surface-2 focus:outline-none"
               aria-label="Close editor"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -632,9 +657,9 @@ const EditSheet: React.FC<{
         </div>
 
         <div className="flex-1 overflow-auto">
-        <table className="min-w-full text-[11px] text-gray-200">
-          <thead className="sticky top-0 z-10 bg-[#1a1a1a]">
-            <tr className="border-b border-[#2a2a2a] text-left text-[10px] uppercase tracking-wide text-gray-400">
+        <table className="min-w-full text-[11px] text-fg">
+          <thead className="sticky top-0 z-10 bg-surface">
+            <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-fg-muted">
               <th className="px-2 py-2 w-12"></th>
               <th className="px-2 py-2 min-w-[160px]">Name</th>
               <th className="px-2 py-2 min-w-[90px]">Number</th>
@@ -700,7 +725,7 @@ const EditRow: React.FC<{
         if (newVal !== oldVal) onUpdate(card.id, field, newVal || null);
       }}
       className={classNames(
-        "w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 focus:bg-[#1a1a1a] outline-none",
+        "w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-fg hover:border-line focus:border-accent/60 focus:bg-surface outline-none",
         minW
       )}
     />
@@ -716,7 +741,7 @@ const EditRow: React.FC<{
         const oldVal = (card[field] as number | null | undefined) ?? null;
         if (newVal !== oldVal) onUpdate(card.id, field, newVal);
       }}
-      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 focus:bg-[#1a1a1a] outline-none"
+      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-fg hover:border-line focus:border-accent/60 focus:bg-surface outline-none"
     />
   );
 
@@ -730,7 +755,7 @@ const EditRow: React.FC<{
         const oldVal = (card[field] as string | null | undefined) ?? null;
         if (newVal !== oldVal) onUpdate(card.id, field, newVal);
       }}
-      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 focus:bg-[#1a1a1a] outline-none [color-scheme:dark]"
+      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-fg hover:border-line focus:border-accent/60 focus:bg-surface outline-none [color-scheme:dark]"
     />
   );
 
@@ -754,7 +779,7 @@ const EditRow: React.FC<{
         setDraft(d => ({ ...d, [field]: v }));
         onUpdate(card.id, field, v);
       }}
-      className="w-full rounded border border-transparent bg-[#141414] px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 outline-none"
+      className="w-full rounded border border-transparent bg-surface px-1.5 py-1 text-[11px] text-fg hover:border-line focus:border-accent/60 outline-none"
     >
       <option value="">—</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -762,9 +787,9 @@ const EditRow: React.FC<{
   );
 
   return (
-    <tr className="border-b border-[#1f1f1f] hover:bg-[#161616]">
+    <tr className="border-b border-line/60 hover:bg-surface">
       <td className="px-2 py-1">
-        <div className="h-10 w-7 overflow-hidden rounded bg-[#0f0f0f]">
+        <div className="h-10 w-7 overflow-hidden rounded bg-card">
           {draft.image ? (
             <img src={draft.image} alt="" className="h-full w-full object-cover" onError={handleImgError} />
           ) : null}
@@ -818,8 +843,9 @@ const SettingsModal: React.FC<{
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Preview the accent live while picking
+  // Preview accent + mode live while editing
   useEffect(() => { applyAccent(draft.accent); }, [draft.accent]);
+  useEffect(() => { applyMode(draft.mode); }, [draft.mode]);
 
   const save = async (patch: Partial<Settings>) => {
     const next = { ...draft, ...patch };
@@ -828,7 +854,14 @@ const SettingsModal: React.FC<{
     setSaveStatus('saving');
     const { error } = await supabase
       .from('settings')
-      .upsert({ id: 1, title: next.title, tagline: next.tagline, accent: next.accent })
+      .upsert({
+        id: 1,
+        title: next.title,
+        tagline: next.tagline,
+        accent: next.accent,
+        mode: next.mode,
+        icon_url: next.icon_url,
+      })
       .eq('id', 1);
     if (error) { console.error(error); setSaveStatus('error'); }
     else {
@@ -836,6 +869,19 @@ const SettingsModal: React.FC<{
       setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 1200);
     }
   };
+
+  const selectTheme = (theme: typeof THEMES[number]) => {
+    const accent = draft.mode === 'light' ? theme.light : theme.dark;
+    save({ accent });
+  };
+
+  const selectMode = (mode: Mode) => {
+    const current = findThemeByAccent(draft.accent) ?? THEMES[0];
+    const accent = mode === 'light' ? current.light : current.dark;
+    save({ mode, accent });
+  };
+
+  const currentTheme = findThemeByAccent(draft.accent);
 
   const statusText =
     saveStatus === 'saving' ? 'Saving…' :
@@ -845,29 +891,29 @@ const SettingsModal: React.FC<{
   return (
     <div
       className="fixed inset-0 z-[950] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={() => { applyAccent(settings.accent); onClose(); }}
+      onClick={() => { applyAccent(settings.accent); applyMode(settings.mode); onClose(); }}
     >
       <div
-        className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#141414] shadow-2xl ring-1 ring-white/5"
+        className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl ring-1 ring-line"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5">
+        <div className="flex items-center justify-between border-b border-line bg-surface px-4 py-2.5">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 pr-2">
               <span className="h-3 w-3 rounded-full bg-rose-400/80" />
               <span className="h-3 w-3 rounded-full bg-amber-400/80" />
               <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
             </div>
-            <h2 className="text-sm font-semibold text-gray-100">Settings</h2>
+            <h2 className="text-sm font-semibold text-fg">Settings</h2>
             <span className={classNames(
               "text-[11px] transition-opacity",
               statusText ? "opacity-100" : "opacity-0",
-              saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-gray-400"
+              saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-fg-muted"
             )}>{statusText || '—'}</span>
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none"
+            className="rounded-md p-1.5 text-fg-muted hover:bg-surface-2 focus:outline-none"
             aria-label="Close settings"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -876,47 +922,89 @@ const SettingsModal: React.FC<{
 
         <div className="space-y-5 p-5">
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">Title</label>
+            <label className="block text-[10px] uppercase tracking-wide text-fg-muted mb-1.5">Title</label>
             <input
               type="text"
               value={draft.title}
               onChange={(e) => setDraft(d => ({ ...d, title: e.target.value }))}
               onBlur={() => { if (draft.title !== settings.title) save({ title: draft.title }); }}
-              className="w-full rounded-lg border border-[#2a2a2a] bg-[#0f0f0f] px-3 py-2 text-sm text-gray-100 outline-none focus:border-accent/60"
+              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-fg outline-none focus:border-accent/60"
             />
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">Tagline</label>
+            <label className="block text-[10px] uppercase tracking-wide text-fg-muted mb-1.5">Tagline</label>
             <input
               type="text"
               value={draft.tagline}
               onChange={(e) => setDraft(d => ({ ...d, tagline: e.target.value }))}
               onBlur={() => { if (draft.tagline !== settings.tagline) save({ tagline: draft.tagline }); }}
-              className="w-full rounded-lg border border-[#2a2a2a] bg-[#0f0f0f] px-3 py-2 text-sm text-gray-100 outline-none focus:border-accent/60"
+              className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-fg outline-none focus:border-accent/60"
             />
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-gray-400 mb-2">Theme</label>
+            <label className="block text-[10px] uppercase tracking-wide text-fg-muted mb-1.5">Icon URL</label>
+            <div className="flex items-center gap-2">
+              <img
+                src={draft.icon_url || DEFAULT_ICON}
+                alt="Icon preview"
+                className="h-9 w-9 rounded border border-line bg-card object-contain p-0.5"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_ICON; }}
+              />
+              <input
+                type="text"
+                placeholder="https://…/logo.png (leave empty for default)"
+                value={draft.icon_url ?? ''}
+                onChange={(e) => setDraft(d => ({ ...d, icon_url: e.target.value || null }))}
+                onBlur={() => { if ((draft.icon_url ?? null) !== (settings.icon_url ?? null)) save({ icon_url: draft.icon_url }); }}
+                className="flex-1 rounded-lg border border-line bg-card px-3 py-2 text-sm text-fg outline-none focus:border-accent/60"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wide text-fg-muted mb-2">Mode</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['dark', 'light'] as const).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => selectMode(m)}
+                  className={classNames(
+                    "rounded-lg border px-3 py-2 text-xs font-semibold capitalize transition-colors",
+                    draft.mode === m
+                      ? "border-accent/60 bg-accent/15 text-fg"
+                      : "border-line bg-card text-fg-muted hover:border-accent/40"
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wide text-fg-muted mb-2">Theme</label>
             <div className="grid grid-cols-3 gap-2">
               {THEMES.map(t => {
-                const isActive = draft.accent.toLowerCase() === t.accent.toLowerCase();
+                const isActive = currentTheme?.name === t.name;
+                const swatch = draft.mode === 'light' ? t.light : t.dark;
                 return (
                   <button
-                    key={t.accent}
+                    key={t.name}
                     type="button"
-                    onClick={() => save({ accent: t.accent })}
+                    onClick={() => selectTheme(t)}
                     className={classNames(
                       "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
                       isActive
-                        ? "border-accent/60 bg-accent/15 text-gray-100"
-                        : "border-[#2a2a2a] bg-[#0f0f0f] text-gray-300 hover:border-[#3a3a3a]"
+                        ? "border-accent/60 bg-accent/15 text-fg"
+                        : "border-line bg-card text-fg-muted hover:border-accent/40"
                     )}
                   >
                     <span
-                      className="h-4 w-4 rounded-full ring-1 ring-white/10"
-                      style={{ background: t.accent }}
+                      className="h-4 w-4 rounded-full ring-1 ring-line"
+                      style={{ background: swatch }}
                     />
                     <span>{t.name}</span>
                   </button>
@@ -933,48 +1021,56 @@ const SettingsModal: React.FC<{
 // ------------------------------
 // Loading Screen
 // ------------------------------
-const LoadingScreen: React.FC<{ progress: number; swirlDelay: number }> = ({ progress, swirlDelay }) => (
-  <div className="fixed inset-0 bg-[#101010] flex flex-col items-center justify-center gap-4 p-4">
-    <div className="relative h-28 w-28">
-      <div className="loading-swirl absolute inset-0" aria-hidden="true" style={{ animationDelay: `${swirlDelay}s` }} />
-      <img
-        src="https://mew.cards/img/logo.png"
-        alt="Loading..."
-        className="h-full w-full absolute top-0 left-0 opacity-25"
-      />
-      <img
-        src="https://mew.cards/img/logo.png"
-        alt="Loading..."
-        className="h-full w-full absolute top-0 left-0 transition-all duration-300 ease-linear"
-        style={{ clipPath: `inset(${100 - progress}% 0 0 0)` }}
-      />
+const LoadingScreen: React.FC<{ progress: number; swirlDelay: number; iconUrl: string }> = ({ progress, swirlDelay, iconUrl }) => {
+  const maskStyle: React.CSSProperties = {
+    WebkitMaskImage: `url("${iconUrl}")`,
+    maskImage: `url("${iconUrl}")`,
+  };
+  return (
+    <div className="fixed inset-0 bg-page flex flex-col items-center justify-center gap-4 p-4">
+      <div className="relative h-28 w-28">
+        <div
+          className="loading-swirl absolute inset-0"
+          aria-hidden="true"
+          style={{ animationDelay: `${swirlDelay}s`, ...maskStyle }}
+        />
+        <img
+          src={iconUrl}
+          alt="Loading..."
+          className="h-full w-full absolute top-0 left-0 opacity-25"
+        />
+        <img
+          src={iconUrl}
+          alt="Loading..."
+          className="h-full w-full absolute top-0 left-0 transition-all duration-300 ease-linear"
+          style={{ clipPath: `inset(${100 - progress}% 0 0 0)` }}
+        />
+      </div>
+      <div className="h-16" />
+      <div className="pointer-events-none absolute bottom-4 left-4 text-[10px] font-semibold text-accent/80">v{APP_VERSION}</div>
+      <style>{`
+        @keyframes swirl {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .loading-swirl {
+          background: radial-gradient(circle at 30% 30%, rgb(var(--accent-rgb) / 0.6), rgb(var(--accent-rgb) / 0.35) 45%, rgb(var(--page-rgb) / 0) 70%);
+          background-size: 200% 200%;
+          opacity: 0.8;
+          filter: blur(6px);
+          animation: swirl 5s linear infinite;
+          mask-size: contain;
+          mask-repeat: no-repeat;
+          mask-position: center;
+          -webkit-mask-size: contain;
+          -webkit-mask-repeat: no-repeat;
+          -webkit-mask-position: center;
+        }
+      `}</style>
     </div>
-    <div className="h-16" />
-    <div className="pointer-events-none absolute bottom-4 left-4 text-[10px] font-semibold text-accent/80">v{APP_VERSION}</div>
-    <style>{`
-      @keyframes swirl {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-      }
-      .loading-swirl {
-        background: radial-gradient(circle at 30% 30%, rgb(var(--accent-rgb) / 0.6), rgb(var(--accent-rgb) / 0.35) 45%, rgba(16, 16, 16, 0) 70%);
-        background-size: 200% 200%;
-        opacity: 0.8;
-        filter: blur(6px);
-        animation: swirl 5s linear infinite;
-        mask-image: url("https://mew.cards/img/logo.png");
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        -webkit-mask-image: url("https://mew.cards/img/logo.png");
-        -webkit-mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        -webkit-mask-position: center;
-      }
-    `}</style>
-  </div>
-);
+  );
+};
 
 // ------------------------------
 // Detail Modal
@@ -998,8 +1094,8 @@ const DetailModal: React.FC<{ card: Card; onClose: () => void }> = ({ card, onCl
 
   return (
     <div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
-      <div className="relative h-[100dvh] w-full max-w-3xl overflow-y-auto sm:h-auto sm:max-h-[90vh] sm:overflow-hidden rounded-none sm:rounded-3xl border border-[#2a2a2a] bg-[#161616] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-3 right-3 z-10 rounded-full p-2 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Close">
+      <div className="relative h-[100dvh] w-full max-w-3xl overflow-y-auto sm:h-auto sm:max-h-[90vh] sm:overflow-hidden rounded-none sm:rounded-3xl border border-line bg-surface shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-3 right-3 z-10 rounded-full p-2 text-fg-muted hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Close">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
         <div className="grid grid-cols-1 sm:grid-cols-2">
@@ -1012,11 +1108,11 @@ const DetailModal: React.FC<{ card: Card; onClose: () => void }> = ({ card, onCl
                 className="relative w-full aspect-[63/88] transition-transform duration-700 [transform-style:preserve-3d]"
                 style={{ transform: `rotateY(${isFlipped ? 180 : 0}deg)` }}
               >
-                <div className="absolute top-0 left-0 w-full h-full [backface-visibility:hidden] overflow-hidden bg-[#0f0f0f]" style={{ borderRadius: "5.2% / 3.9%" }}>
+                <div className="absolute top-0 left-0 w-full h-full [backface-visibility:hidden] overflow-hidden bg-card" style={{ borderRadius: "5.2% / 3.9%" }}>
                   <img src={card.image || IMG_FALLBACK} alt={`${card.name} front`} className="h-full w-full object-fill" style={{ aspectRatio: "63/88" }} onError={handleImgError} referrerPolicy="strict-origin-when-cross-origin" />
                 </div>
                 {card.image_back && (
-                  <div className="absolute top-0 left-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] overflow-hidden bg-[#0f0f0f]" style={{ borderRadius: "5.2% / 3.9%" }}>
+                  <div className="absolute top-0 left-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] overflow-hidden bg-card" style={{ borderRadius: "5.2% / 3.9%" }}>
                     <img src={card.image_back} alt={`${card.name} back`} className="h-full w-full object-fill" style={{ aspectRatio: "63/88" }} onError={handleImgError} referrerPolicy="strict-origin-when-cross-origin" />
                   </div>
                 )}
@@ -1027,7 +1123,7 @@ const DetailModal: React.FC<{ card: Card; onClose: () => void }> = ({ card, onCl
           <div className="flex flex-col space-y-3 p-4 pt-2 sm:p-6 sm:max-h-[80vh] sm:overflow-y-auto">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-4xl font-semibold text-gray-100 leading-tight">{card.name}</h2>
+                <h2 className="text-4xl font-semibold text-fg leading-tight">{card.name}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                   {card.number && card.number !== "N/A" && (<p className="text-base font-semibold text-accent">{card.number}</p>)}
                   {card.rarity && <Tag label={card.rarity} />}
