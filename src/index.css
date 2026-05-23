@@ -1,3 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --accent: #cb97a5;
+  --accent-rgb: 203 151 165;
+}

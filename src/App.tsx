@@ -19,6 +19,35 @@ const APP_VERSION = "22.0";
 // ------------------------------
 export type Edition = '1st' | 'Unlim' | 'Error';
 
+export type Settings = {
+  id: number;
+  title: string;
+  tagline: string;
+  accent: string;
+};
+
+export const THEMES: Array<{ name: string; accent: string }> = [
+  { name: "Mew",      accent: "#cb97a5" },
+  { name: "Sky",      accent: "#7dd3fc" },
+  { name: "Mint",     accent: "#86efac" },
+  { name: "Lavender", accent: "#c084fc" },
+  { name: "Sunset",   accent: "#fbbf24" },
+  { name: "Coral",    accent: "#fb7185" },
+];
+
+const DEFAULT_SETTINGS: Settings = { id: 1, title: "Collect", tagline: "Card Gallery", accent: "#cb97a5" };
+
+function hexToRgb(hex: string): string {
+  const m = hex.replace('#', '').match(/.{2}/g);
+  if (!m || m.length < 3) return "203 151 165";
+  return m.slice(0, 3).map(h => parseInt(h, 16)).join(' ');
+}
+
+function applyAccent(hex: string) {
+  document.documentElement.style.setProperty('--accent', hex);
+  document.documentElement.style.setProperty('--accent-rgb', hexToRgb(hex));
+}
+
 export type Card = {
   id: string;
   name: string;
@@ -146,7 +175,7 @@ const TiltCardButton: React.FC<{ ariaLabel: string; onClick: () => void; childre
       onMouseMove={onMove}
       onMouseLeave={reset}
       onMouseEnter={() => { const el = ref.current; if (el) el.style.willChange = 'transform'; }}
-      className="group relative block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101010] focus-visible:ring-[#cb97a5] rounded-[4.2%]"
+      className="group relative block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101010] focus-visible:ring-accent rounded-[4.2%]"
       style={{ transformStyle: 'preserve-3d' } as React.CSSProperties}
     >
       {children}
@@ -159,7 +188,7 @@ const BackgroundGradient: React.FC = () => (
   <div
     aria-hidden="true"
     className="pointer-events-none fixed inset-0 z-0"
-    style={{ background: `linear-gradient(to top left, rgba(203, 151, 165, 0.15), transparent 40%)` }}
+    style={{ background: `linear-gradient(to top left, rgb(var(--accent-rgb) / 0.15), transparent 40%)` }}
   />
 );
 
@@ -175,6 +204,8 @@ export default function PokeCardGallery() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Card | null>(null);
   const [showEdit, setShowEdit] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [mew, setMew] = useState(true);
   const [cameo, setCameo] = useState(false);
   const [intl, setIntl] = useState(false);
@@ -183,7 +214,24 @@ export default function PokeCardGallery() {
   const [swirlEpoch] = useState(() => Date.now());
   const swirlDelay = useMemo(() => -((Date.now() - swirlEpoch) % 5000) / 1000, [swirlEpoch]);
 
-  useEffect(() => { document.title = "Collect"; }, []);
+  useEffect(() => { document.title = settings.title; }, [settings.title]);
+  useEffect(() => { applyAccent(settings.accent); }, [settings.accent]);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.from('settings').select('*').eq('id', 1).single();
+      if (data && !error) {
+        setSettings({
+          id: data.id,
+          title: data.title ?? DEFAULT_SETTINGS.title,
+          tagline: data.tagline ?? DEFAULT_SETTINGS.tagline,
+          accent: data.accent ?? DEFAULT_SETTINGS.accent,
+        });
+      } else if (error) {
+        console.warn("Settings fetch failed (using defaults):", error.message);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!q.trim()) return;
@@ -245,10 +293,10 @@ export default function PokeCardGallery() {
         <div className="mx-auto max-w-7xl px-3 py-2">
           <div className="flex w-full flex-row flex-wrap items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <img src="https://mew.cards/img/logo.png" alt="Collect Logo" className="h-8 w-8" />
+              <img src="https://mew.cards/img/logo.png" alt="Logo" className="h-8 w-8" />
               <div>
-                <h1 className="text-base sm:text-lg font-semibold tracking-tight">Collect</h1>
-                <div className="-mt-0.5 text-[11px] text-gray-400">Card Gallery</div>
+                <h1 className="text-base sm:text-lg font-semibold tracking-tight">{settings.title}</h1>
+                <div className="-mt-0.5 text-[11px] text-gray-400">{settings.tagline}</div>
               </div>
             </div>
             <div className="flex w-full flex-row flex-wrap items-center gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
@@ -267,7 +315,7 @@ export default function PokeCardGallery() {
                   {releaseSortDesc ? "Date ▼" : "Date ▲"}
                 </button>
                 <div className="relative w-36 sm:w-60">
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 pr-8 text-[13px] text-gray-200 placeholder:text-gray-400 shadow-sm outline-none focus:ring-2 focus:ring-[#cb97a5]" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 pr-8 text-[13px] text-gray-200 placeholder:text-gray-400 shadow-sm outline-none focus:ring-2 focus:ring-accent" />
                   {q && (
                     <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-500 hover:text-gray-200 hover:bg-[#2f2f2f]" aria-label="Clear search">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -307,7 +355,7 @@ export default function PokeCardGallery() {
                   </div>
                 </TiltCardButton>
                 <div className="mt-1.5 flex h-5 items-center justify-between gap-1.5 px-1">
-                  <span className="text-[10px] font-semibold text-[#cb97a5] truncate">
+                  <span className="text-[10px] font-semibold text-accent truncate">
                     {card.number && card.number !== "N/A" ? card.number : ''}
                   </span>
                   <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -334,6 +382,17 @@ export default function PokeCardGallery() {
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
         </button>
+        <button
+          type="button"
+          onClick={() => { setShowSettings(true); trackEvent('settings_modal_open'); }}
+          aria-label="Settings"
+          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-black/50 sm:bg-transparent border border-white/10 sm:border-transparent focus:outline-none"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 opacity-50 hover:opacity-100 transition-opacity duration-150" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
       </div>
 
       {selected && <DetailModal card={selected} onClose={() => setSelected(null)} />}
@@ -342,6 +401,13 @@ export default function PokeCardGallery() {
           cards={cards}
           setCards={setCards}
           onClose={() => setShowEdit(false)}
+        />
+      )}
+      {showSettings && (
+        <SettingsModal
+          settings={settings}
+          setSettings={setSettings}
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>
@@ -362,7 +428,7 @@ const Toggle: React.FC<{ label: string; active: boolean; onClick: () => void }> 
     onClick={onClick}
     className={classNames(
       "rounded-full border px-2 py-0.5 text-[11px] font-medium shadow-sm focus:outline-none focus:ring-1 transition-colors",
-      active ? "border-[#cb97a5] bg-[#cb97a5]/15 text-[#cb97a5] ring-[#cb97a5]" : "border-gray-500 bg-transparent text-gray-300 hover:bg-[#cb97a5]/10 ring-transparent"
+      active ? "border-accent bg-accent/15 text-accent ring-accent" : "border-gray-500 bg-transparent text-gray-300 hover:bg-accent/10 ring-transparent"
     )}
     aria-pressed={active}
   >{label}</button>
@@ -448,7 +514,7 @@ const EmptyDatabase: React.FC<{ onSeeded: () => void }> = ({ onSeeded }) => {
       <button
         onClick={seed}
         disabled={seeding}
-        className="rounded-lg border border-[#cb97a5]/40 bg-[#cb97a5]/20 px-4 py-2 text-xs font-semibold text-[#f6d7df] hover:bg-[#cb97a5]/30 disabled:opacity-50"
+        className="rounded-lg border border-accent/40 bg-accent/20 px-4 py-2 text-xs font-semibold text-white hover:bg-accent/30 disabled:opacity-50"
       >
         {seeding ? "Adding…" : "Add sample cards"}
       </button>
@@ -524,36 +590,48 @@ const EditSheet: React.FC<{
     saveStatus === 'error' ? 'Error' : '';
 
   return (
-    <div className="fixed inset-0 z-[950] flex flex-col bg-black/85 backdrop-blur-sm">
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#141414] px-4 py-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-gray-100">Edit cards</h2>
-          <span className="text-[11px] text-gray-500">{cards.length} {cards.length === 1 ? 'card' : 'cards'}</span>
-          <span className={classNames(
-            "text-[11px] transition-opacity",
-            statusText ? "opacity-100" : "opacity-0",
-            saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-gray-400"
-          )}>{statusText || '—'}</span>
+    <div
+      className="fixed inset-0 z-[950] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex h-[95vh] w-[95vw] flex-col overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#141414] shadow-2xl ring-1 ring-white/5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 pr-2">
+              <span className="h-3 w-3 rounded-full bg-rose-400/80" />
+              <span className="h-3 w-3 rounded-full bg-amber-400/80" />
+              <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
+            </div>
+            <h2 className="text-sm font-semibold text-gray-100">Edit cards</h2>
+            <span className="text-[11px] text-gray-500">{cards.length} {cards.length === 1 ? 'card' : 'cards'}</span>
+            <span className={classNames(
+              "text-[11px] transition-opacity",
+              statusText ? "opacity-100" : "opacity-0",
+              saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-gray-400"
+            )}>{statusText || '—'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={addRow}
+              disabled={adding}
+              className="rounded-md border border-accent/40 bg-accent/20 px-3 py-1 text-xs font-semibold text-white hover:bg-accent/30 disabled:opacity-50"
+            >
+              + Add row
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-md p-1.5 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none"
+              aria-label="Close editor"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={addRow}
-            disabled={adding}
-            className="rounded-md border border-[#cb97a5]/40 bg-[#cb97a5]/20 px-3 py-1 text-xs font-semibold text-[#f6d7df] hover:bg-[#cb97a5]/30 disabled:opacity-50"
-          >
-            + Add row
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1.5 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none"
-            aria-label="Close editor"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-      </div>
 
-      <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto">
         <table className="min-w-full text-[11px] text-gray-200">
           <thead className="sticky top-0 z-10 bg-[#1a1a1a]">
             <tr className="border-b border-[#2a2a2a] text-left text-[10px] uppercase tracking-wide text-gray-400">
@@ -598,6 +676,7 @@ const EditSheet: React.FC<{
           </tbody>
         </table>
       </div>
+      </div>
     </div>
   );
 };
@@ -621,7 +700,7 @@ const EditRow: React.FC<{
         if (newVal !== oldVal) onUpdate(card.id, field, newVal || null);
       }}
       className={classNames(
-        "w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 focus:bg-[#1a1a1a] outline-none",
+        "w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 focus:bg-[#1a1a1a] outline-none",
         minW
       )}
     />
@@ -637,7 +716,7 @@ const EditRow: React.FC<{
         const oldVal = (card[field] as number | null | undefined) ?? null;
         if (newVal !== oldVal) onUpdate(card.id, field, newVal);
       }}
-      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 focus:bg-[#1a1a1a] outline-none"
+      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 focus:bg-[#1a1a1a] outline-none"
     />
   );
 
@@ -651,7 +730,7 @@ const EditRow: React.FC<{
         const oldVal = (card[field] as string | null | undefined) ?? null;
         if (newVal !== oldVal) onUpdate(card.id, field, newVal);
       }}
-      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 focus:bg-[#1a1a1a] outline-none [color-scheme:dark]"
+      className="w-full rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 focus:bg-[#1a1a1a] outline-none [color-scheme:dark]"
     />
   );
 
@@ -663,7 +742,7 @@ const EditRow: React.FC<{
         setDraft(d => ({ ...d, [field]: e.target.checked }));
         onUpdate(card.id, field, e.target.checked);
       }}
-      className="accent-[#cb97a5]"
+      className="accent-accent"
     />
   );
 
@@ -675,7 +754,7 @@ const EditRow: React.FC<{
         setDraft(d => ({ ...d, [field]: v }));
         onUpdate(card.id, field, v);
       }}
-      className="w-full rounded border border-transparent bg-[#141414] px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-[#cb97a5]/60 outline-none"
+      className="w-full rounded border border-transparent bg-[#141414] px-1.5 py-1 text-[11px] text-gray-100 hover:border-[#2a2a2a] focus:border-accent/60 outline-none"
     >
       <option value="">—</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -723,6 +802,135 @@ const EditRow: React.FC<{
 };
 
 // ------------------------------
+// Settings Modal
+// ------------------------------
+const SettingsModal: React.FC<{
+  settings: Settings;
+  setSettings: React.Dispatch<React.SetStateAction<Settings>>;
+  onClose: () => void;
+}> = ({ settings, setSettings, onClose }) => {
+  const [draft, setDraft] = useState<Settings>(settings);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Preview the accent live while picking
+  useEffect(() => { applyAccent(draft.accent); }, [draft.accent]);
+
+  const save = async (patch: Partial<Settings>) => {
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    setSettings(next);
+    setSaveStatus('saving');
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ id: 1, title: next.title, tagline: next.tagline, accent: next.accent })
+      .eq('id', 1);
+    if (error) { console.error(error); setSaveStatus('error'); }
+    else {
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 1200);
+    }
+  };
+
+  const statusText =
+    saveStatus === 'saving' ? 'Saving…' :
+    saveStatus === 'saved' ? 'Saved ✓' :
+    saveStatus === 'error' ? 'Error' : '';
+
+  return (
+    <div
+      className="fixed inset-0 z-[950] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={() => { applyAccent(settings.accent); onClose(); }}
+    >
+      <div
+        className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#141414] shadow-2xl ring-1 ring-white/5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 pr-2">
+              <span className="h-3 w-3 rounded-full bg-rose-400/80" />
+              <span className="h-3 w-3 rounded-full bg-amber-400/80" />
+              <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
+            </div>
+            <h2 className="text-sm font-semibold text-gray-100">Settings</h2>
+            <span className={classNames(
+              "text-[11px] transition-opacity",
+              statusText ? "opacity-100" : "opacity-0",
+              saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-gray-400"
+            )}>{statusText || '—'}</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1.5 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none"
+            aria-label="Close settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">Title</label>
+            <input
+              type="text"
+              value={draft.title}
+              onChange={(e) => setDraft(d => ({ ...d, title: e.target.value }))}
+              onBlur={() => { if (draft.title !== settings.title) save({ title: draft.title }); }}
+              className="w-full rounded-lg border border-[#2a2a2a] bg-[#0f0f0f] px-3 py-2 text-sm text-gray-100 outline-none focus:border-accent/60"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">Tagline</label>
+            <input
+              type="text"
+              value={draft.tagline}
+              onChange={(e) => setDraft(d => ({ ...d, tagline: e.target.value }))}
+              onBlur={() => { if (draft.tagline !== settings.tagline) save({ tagline: draft.tagline }); }}
+              className="w-full rounded-lg border border-[#2a2a2a] bg-[#0f0f0f] px-3 py-2 text-sm text-gray-100 outline-none focus:border-accent/60"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wide text-gray-400 mb-2">Theme</label>
+            <div className="grid grid-cols-3 gap-2">
+              {THEMES.map(t => {
+                const isActive = draft.accent.toLowerCase() === t.accent.toLowerCase();
+                return (
+                  <button
+                    key={t.accent}
+                    type="button"
+                    onClick={() => save({ accent: t.accent })}
+                    className={classNames(
+                      "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
+                      isActive
+                        ? "border-accent/60 bg-accent/15 text-gray-100"
+                        : "border-[#2a2a2a] bg-[#0f0f0f] text-gray-300 hover:border-[#3a3a3a]"
+                    )}
+                  >
+                    <span
+                      className="h-4 w-4 rounded-full ring-1 ring-white/10"
+                      style={{ background: t.accent }}
+                    />
+                    <span>{t.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ------------------------------
 // Loading Screen
 // ------------------------------
 const LoadingScreen: React.FC<{ progress: number; swirlDelay: number }> = ({ progress, swirlDelay }) => (
@@ -742,7 +950,7 @@ const LoadingScreen: React.FC<{ progress: number; swirlDelay: number }> = ({ pro
       />
     </div>
     <div className="h-16" />
-    <div className="pointer-events-none absolute bottom-4 left-4 text-[10px] font-semibold text-[#cb97a5]/80">v{APP_VERSION}</div>
+    <div className="pointer-events-none absolute bottom-4 left-4 text-[10px] font-semibold text-accent/80">v{APP_VERSION}</div>
     <style>{`
       @keyframes swirl {
         0% { background-position: 0% 50%; }
@@ -750,7 +958,7 @@ const LoadingScreen: React.FC<{ progress: number; swirlDelay: number }> = ({ pro
         100% { background-position: 0% 50%; }
       }
       .loading-swirl {
-        background: radial-gradient(circle at 30% 30%, rgba(255, 209, 221, 0.85), rgba(203, 151, 165, 0.35) 45%, rgba(16, 16, 16, 0) 70%);
+        background: radial-gradient(circle at 30% 30%, rgb(var(--accent-rgb) / 0.6), rgb(var(--accent-rgb) / 0.35) 45%, rgba(16, 16, 16, 0) 70%);
         background-size: 200% 200%;
         opacity: 0.8;
         filter: blur(6px);
@@ -791,7 +999,7 @@ const DetailModal: React.FC<{ card: Card; onClose: () => void }> = ({ card, onCl
   return (
     <div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
       <div className="relative h-[100dvh] w-full max-w-3xl overflow-y-auto sm:h-auto sm:max-h-[90vh] sm:overflow-hidden rounded-none sm:rounded-3xl border border-[#2a2a2a] bg-[#161616] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-3 right-3 z-10 rounded-full p-2 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none focus:ring-2 focus:ring-[#cb97a5]" aria-label="Close">
+        <button onClick={onClose} className="absolute top-3 right-3 z-10 rounded-full p-2 text-gray-400 hover:bg-[#1f1f1f] focus:outline-none focus:ring-2 focus:ring-accent" aria-label="Close">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
         <div className="grid grid-cols-1 sm:grid-cols-2">
@@ -821,17 +1029,17 @@ const DetailModal: React.FC<{ card: Card; onClose: () => void }> = ({ card, onCl
               <div>
                 <h2 className="text-4xl font-semibold text-gray-100 leading-tight">{card.name}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {card.number && card.number !== "N/A" && (<p className="text-base font-semibold text-[#cb97a5]">{card.number}</p>)}
+                  {card.number && card.number !== "N/A" && (<p className="text-base font-semibold text-accent">{card.number}</p>)}
                   {card.rarity && <Tag label={card.rarity} />}
-                  {card.edition && (<span className="rounded bg-[#cb97a5]/15 px-2.5 py-0.5 text-[11px] font-semibold text-[#cb97a5]">{card.edition}</span>)}
+                  {card.edition && (<span className="rounded bg-accent/15 px-2.5 py-0.5 text-[11px] font-semibold text-accent">{card.edition}</span>)}
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {card.set?.includes("Promo") && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Promo</span>)}
-              {card.is_intl && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Intl</span>)}
-              {card.is_cameo && (<span className="rounded bg-[#cb97a5]/15 px-2 py-0.5 text-[11px] font-semibold text-[#cb97a5]">Cameo</span>)}
+              {card.set?.includes("Promo") && (<span className="rounded bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-accent">Promo</span>)}
+              {card.is_intl && (<span className="rounded bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-accent">Intl</span>)}
+              {card.is_cameo && (<span className="rounded bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-accent">Cameo</span>)}
             </div>
 
             <div className="grid grid-cols-1 gap-2">
@@ -849,7 +1057,7 @@ const DetailModal: React.FC<{ card: Card; onClose: () => void }> = ({ card, onCl
             <div className="mt-2 flex items-center gap-2 sm:hidden">
               <button
                 onClick={onClose}
-                className="flex-1 rounded-lg border border-[#cb97a5]/40 bg-[#cb97a5]/20 py-2 text-xs font-semibold text-[#f6d7df]"
+                className="flex-1 rounded-lg border border-accent/40 bg-accent/20 py-2 text-xs font-semibold text-white"
               >
                 Back to list
               </button>
