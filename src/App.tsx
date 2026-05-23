@@ -32,11 +32,11 @@ export type Settings = {
 
 export const THEMES: Array<{ name: string; dark: string; light: string }> = [
   { name: "Mew",      dark: "#cb97a5", light: "#a35d70" },
-  { name: "Sky",      dark: "#7dd3fc", light: "#0284c7" },
-  { name: "Mint",     dark: "#86efac", light: "#16a34a" },
-  { name: "Lavender", dark: "#c084fc", light: "#9333ea" },
-  { name: "Sunset",   dark: "#fbbf24", light: "#d97706" },
-  { name: "Coral",    dark: "#fb7185", light: "#e11d48" },
+  { name: "Vaporeon", dark: "#7dd3fc", light: "#0284c7" },
+  { name: "Celebi",   dark: "#86efac", light: "#16a34a" },
+  { name: "Espeon",   dark: "#c084fc", light: "#9333ea" },
+  { name: "Raichu",   dark: "#fbbf24", light: "#d97706" },
+  { name: "Charizard",dark: "#fb7185", light: "#e11d48" },
 ];
 
 const DEFAULT_ICON = "https://mew.cards/img/logo.png";
@@ -675,11 +675,6 @@ const EditSheet: React.FC<{
       >
         <div className="flex items-center justify-between border-b border-line bg-surface px-4 py-2.5">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 pr-2">
-              <span className="h-3 w-3 rounded-full bg-rose-400/80" />
-              <span className="h-3 w-3 rounded-full bg-amber-400/80" />
-              <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
-            </div>
             <h2 className="text-sm font-semibold text-fg">Edit cards</h2>
             <span className="text-[11px] text-fg-muted">{localCards.length} {localCards.length === 1 ? 'card' : 'cards'}</span>
             <span className={classNames(
@@ -963,11 +958,6 @@ const SettingsModal: React.FC<{
       >
         <div className="flex items-center justify-between border-b border-line bg-surface px-4 py-2.5">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 pr-2">
-              <span className="h-3 w-3 rounded-full bg-rose-400/80" />
-              <span className="h-3 w-3 rounded-full bg-amber-400/80" />
-              <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
-            </div>
             <h2 className="text-sm font-semibold text-fg">Settings</h2>
             <span className={classNames(
               "text-[11px] transition-opacity",
