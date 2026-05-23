@@ -208,17 +208,8 @@ const TiltCardButton: React.FC<{ ariaLabel: string; onClick: () => void; childre
 
 const BackgroundGradient: React.FC = () => (
   <>
-    {/* Dot-grid texture (lights up in light mode via CSS) */}
     <div aria-hidden="true" className="bg-texture pointer-events-none fixed inset-0 z-0" />
-    {/* Dual-corner accent wash */}
-    <div
-      aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0"
-      style={{
-        background: `linear-gradient(135deg, rgb(var(--accent-rgb) / 0.18), transparent 55%),
-                     linear-gradient(315deg, rgb(var(--accent-rgb) / 0.08), transparent 45%)`
-      }}
-    />
+    <div aria-hidden="true" className="bg-gradient pointer-events-none fixed inset-0 z-0" />
   </>
 );
 
@@ -285,10 +276,15 @@ export default function PokeCardGallery() {
 
   useEffect(() => { fetchCards(); }, []);
 
+  const imageUrlsKey = useMemo(
+    () => cards.flatMap(c => [c.image, c.image_back]).filter(Boolean).join('|'),
+    [cards]
+  );
+
   useEffect(() => {
     if (dataStatus !== 'loaded') return;
 
-    const imageUrls = cards.flatMap(c => [c.image, c.image_back]).filter(Boolean) as string[];
+    const imageUrls = imageUrlsKey ? imageUrlsKey.split('|') : [];
     if (imageUrls.length === 0) { setImagesLoaded(true); return; }
 
     let loadedCount = 0;
@@ -308,7 +304,7 @@ export default function PokeCardGallery() {
       img.onload = onFinish;
       img.onerror = onFinish;
     });
-  }, [cards, dataStatus]);
+  }, [imageUrlsKey, dataStatus]);
 
   const filtered = useMemo(
     () => applyFilters(cards, { q, mew, cameo, intl, sortDesc: releaseSortDesc }),
@@ -322,7 +318,7 @@ export default function PokeCardGallery() {
   return (
     <div className="relative min-h-screen bg-page font-sans text-fg">
       <BackgroundGradient />
-      <header className="sticky top-0 z-40 border-b border-line/60 bg-surface/80 backdrop-blur">
+      <header className="app-header sticky top-0 z-40 border-b border-line/60 backdrop-blur">
         <div className="mx-auto max-w-7xl px-3 py-2">
           <div className="flex w-full flex-row flex-wrap items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -348,7 +344,7 @@ export default function PokeCardGallery() {
                   {releaseSortDesc ? "Date ▼" : "Date ▲"}
                 </button>
                 <div className="relative w-36 sm:w-60">
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 rounded-lg border border-line/60 bg-surface-2/80 backdrop-blur-sm px-3 pr-8 text-[13px] text-fg placeholder:text-fg-muted shadow-sm outline-none focus:ring-2 focus:ring-accent" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="app-search w-full h-8 rounded-lg border backdrop-blur-sm px-3 pr-8 text-[13px] text-fg placeholder:text-fg-muted shadow-sm outline-none focus:ring-2 focus:ring-accent" />
                   {q && (
                     <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-500 hover:text-fg hover:bg-surface-2" aria-label="Clear search">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -408,7 +404,7 @@ export default function PokeCardGallery() {
           type="button"
           onClick={() => { setShowEdit(true); trackEvent('edit_modal_open'); }}
           aria-label="Edit cards"
-          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-surface/80 sm:bg-transparent border border-line/40 sm:border-transparent focus:outline-none"
+          className="app-fab rounded-lg sm:rounded-none p-2 sm:p-1.5 sm:!bg-transparent border sm:!border-transparent focus:outline-none"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 opacity-50 hover:opacity-100 transition-opacity duration-150" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 20h9" />
@@ -419,7 +415,7 @@ export default function PokeCardGallery() {
           type="button"
           onClick={() => { setShowSettings(true); trackEvent('settings_modal_open'); }}
           aria-label="Settings"
-          className="rounded-lg sm:rounded-none p-2 sm:p-1.5 bg-surface/80 sm:bg-transparent border border-line/40 sm:border-transparent focus:outline-none"
+          className="app-fab rounded-lg sm:rounded-none p-2 sm:p-1.5 sm:!bg-transparent border sm:!border-transparent focus:outline-none"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 opacity-50 hover:opacity-100 transition-opacity duration-150" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
@@ -451,7 +447,7 @@ export default function PokeCardGallery() {
 // Reusable bits
 // ------------------------------
 const InfoPill: React.FC<{ label: string }> = ({ label }) => (
-  <span className="rounded border border-line bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted">
+  <span className="info-pill rounded px-1.5 py-0.5 text-[10px] font-semibold">
     {label}
   </span>
 );
@@ -563,69 +559,115 @@ const EditSheet: React.FC<{
   setCards: React.Dispatch<React.SetStateAction<Card[]>>;
   onClose: () => void;
 }> = ({ cards, setCards, onClose }) => {
+  const [localCards, setLocalCards] = useState<Card[]>(cards);
+  const [changedIds, setChangedIds] = useState<Set<string>>(new Set());
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [adding, setAdding] = useState(false);
+
+  const pendingCount = changedIds.size + newIds.size + deletedIds.size;
+  const dirty = pendingCount > 0;
+
+  const attemptClose = () => {
+    if (dirty && !confirm(`Discard ${pendingCount} unsaved change${pendingCount === 1 ? '' : 's'}?`)) return;
+    onClose();
+  };
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') attemptClose(); };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [dirty, pendingCount]);
 
-  const flashSaved = () => {
-    setSaveStatus('saved');
-    setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 1500);
+  const updateField = (id: string, field: keyof Card, value: any) => {
+    setLocalCards(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+    if (!newIds.has(id)) {
+      setChangedIds(prev => prev.has(id) ? prev : new Set(prev).add(id));
+    }
+    if (saveStatus === 'saved' || saveStatus === 'error') setSaveStatus('idle');
   };
 
-  const updateField = async (id: string, field: keyof Card, value: any) => {
-    setCards(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
-    setSaveStatus('saving');
-    const { error } = await supabase.from('cards').update({ [field]: value }).eq('id', id);
-    if (error) { console.error(error); setSaveStatus('error'); }
-    else flashSaved();
+  const addRow = () => {
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const newRow: Card = { id: tempId, name: 'New card', is_mew: true };
+    setLocalCards(prev => [...prev, newRow]);
+    setNewIds(prev => new Set(prev).add(tempId));
+    if (saveStatus === 'saved' || saveStatus === 'error') setSaveStatus('idle');
   };
 
-  const addRow = async () => {
-    setAdding(true);
-    setSaveStatus('saving');
-    const { data, error } = await supabase
-      .from('cards')
-      .insert({ name: 'New card', is_mew: true })
-      .select()
-      .single();
-    if (data && !error) {
-      setCards(prev => [...prev, data]);
-      flashSaved();
+  const deleteRow = (id: string) => {
+    if (!confirm('Delete this card?')) return;
+    setLocalCards(prev => prev.filter(c => c.id !== id));
+    if (newIds.has(id)) {
+      setNewIds(prev => { const n = new Set(prev); n.delete(id); return n; });
     } else {
-      console.error(error);
+      setDeletedIds(prev => new Set(prev).add(id));
+      setChangedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    }
+    if (saveStatus === 'saved' || saveStatus === 'error') setSaveStatus('idle');
+  };
+
+  const save = async () => {
+    if (!dirty) return;
+    setSaveStatus('saving');
+    try {
+      if (deletedIds.size > 0) {
+        const { error } = await supabase.from('cards').delete().in('id', [...deletedIds]);
+        if (error) throw error;
+      }
+
+      let insertedRows: Card[] = [];
+      if (newIds.size > 0) {
+        const rowsToInsert = localCards
+          .filter(c => newIds.has(c.id))
+          .map(({ id, ...rest }) => rest);
+        const { data, error } = await supabase.from('cards').insert(rowsToInsert).select();
+        if (error) throw error;
+        insertedRows = data || [];
+      }
+
+      if (changedIds.size > 0) {
+        for (const id of changedIds) {
+          const card = localCards.find(c => c.id === id);
+          if (!card) continue;
+          const { id: _ignored, ...rest } = card;
+          const { error } = await supabase.from('cards').update(rest).eq('id', id);
+          if (error) throw error;
+        }
+      }
+
+      const reconciled = localCards
+        .filter(c => !newIds.has(c.id))
+        .concat(insertedRows);
+      setLocalCards(reconciled);
+      setCards(reconciled);
+
+      setChangedIds(new Set());
+      setNewIds(new Set());
+      setDeletedIds(new Set());
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(s => s === 'saved' ? 'idle' : s), 1500);
+    } catch (e) {
+      console.error('Save failed:', e);
       setSaveStatus('error');
     }
-    setAdding(false);
-  };
-
-  const deleteRow = async (id: string) => {
-    if (!confirm('Delete this card? This cannot be undone.')) return;
-    setSaveStatus('saving');
-    const { error } = await supabase.from('cards').delete().eq('id', id);
-    if (error) { console.error(error); setSaveStatus('error'); return; }
-    setCards(prev => prev.filter(c => c.id !== id));
-    flashSaved();
   };
 
   const sorted = useMemo(
-    () => [...cards].sort((a, b) => releaseTs(a) - releaseTs(b)),
-    [cards]
+    () => [...localCards].sort((a, b) => releaseTs(a) - releaseTs(b)),
+    [localCards]
   );
 
   const statusText =
     saveStatus === 'saving' ? 'Saving…' :
     saveStatus === 'saved' ? 'Saved ✓' :
-    saveStatus === 'error' ? 'Error' : '';
+    saveStatus === 'error' ? 'Error' :
+    dirty ? `${pendingCount} unsaved` : '';
 
   return (
     <div
       className="fixed inset-0 z-[950] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={attemptClose}
     >
       <div
         className="flex h-[95vh] w-[95vw] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl ring-1 ring-line"
@@ -639,23 +681,37 @@ const EditSheet: React.FC<{
               <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
             </div>
             <h2 className="text-sm font-semibold text-fg">Edit cards</h2>
-            <span className="text-[11px] text-gray-500">{cards.length} {cards.length === 1 ? 'card' : 'cards'}</span>
+            <span className="text-[11px] text-fg-muted">{localCards.length} {localCards.length === 1 ? 'card' : 'cards'}</span>
             <span className={classNames(
               "text-[11px] transition-opacity",
               statusText ? "opacity-100" : "opacity-0",
-              saveStatus === 'error' ? "text-rose-400" : saveStatus === 'saved' ? "text-emerald-400" : "text-fg-muted"
+              saveStatus === 'error' ? "text-rose-400"
+                : saveStatus === 'saved' ? "text-emerald-400"
+                : dirty ? "text-amber-400"
+                : "text-fg-muted"
             )}>{statusText || '—'}</span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={addRow}
-              disabled={adding}
-              className="rounded-md border border-accent/40 bg-accent/20 px-3 py-1 text-xs font-semibold text-white hover:bg-accent/30 disabled:opacity-50"
+              className="rounded-md border border-line bg-surface-2 px-3 py-1 text-xs font-semibold text-fg hover:bg-card focus:outline-none"
             >
               + Add row
             </button>
             <button
-              onClick={onClose}
+              onClick={save}
+              disabled={!dirty || saveStatus === 'saving'}
+              className={classNames(
+                "rounded-md px-3 py-1 text-xs font-semibold focus:outline-none transition-colors",
+                dirty && saveStatus !== 'saving'
+                  ? "border border-accent/40 bg-accent/20 text-white hover:bg-accent/30"
+                  : "border border-line bg-surface-2 text-fg-muted cursor-not-allowed"
+              )}
+            >
+              {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={attemptClose}
               className="rounded-md p-1.5 text-fg-muted hover:bg-surface-2 focus:outline-none"
               aria-label="Close editor"
             >
